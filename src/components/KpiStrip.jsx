@@ -1,10 +1,8 @@
 import React from 'react';
-
 export default function KpiStrip({ stats }) {
   if (!stats) return null;
   const icuLoad = Math.round((stats.icuO / stats.icuT) * 100);
   const emgLoad = Math.round((stats.emgO / stats.emgT) * 100);
-
   return (
     <div className="kpi-grid">
       <div className="card">

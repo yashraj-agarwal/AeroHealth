@@ -1,15 +1,11 @@
-// src/components/Landing.jsx
-import React, { useState } from 'react';
 
+import React, { useState } from 'react';
 export default function Landing({ onAdminLogin }) {
   const [symptoms, setSymptoms] = useState("");
   const [loading, setLoading] = useState(false);
-
   const handleAnalyse = async () => {
     if (symptoms.trim().length < 5) return alert("Please describe your symptoms.");
     setLoading(true);
-
-    // Send the symptom data directly to our Node.js backend!
     const payload = {
       name: "Walk-in Patient",
       desc: symptoms,
@@ -19,7 +15,6 @@ export default function Landing({ onAdminLogin }) {
       lat: 12.9700 + (Math.random() - 0.5) * 0.01,
       lng: 77.7500 + (Math.random() - 0.5) * 0.01
     };
-
     try {
       await fetch('http://localhost:5000/api/triage', {
         method: 'POST',
@@ -33,7 +28,6 @@ export default function Landing({ onAdminLogin }) {
     }
     setLoading(false);
   };
-
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "var(--bg)" }}>
       <nav style={{ height: 64, padding: "0 48px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
@@ -45,13 +39,11 @@ export default function Landing({ onAdminLogin }) {
           Admin Login
         </button>
       </nav>
-
       <div style={{ flex: 1, padding: "100px 24px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
         <h1 style={{ fontWeight: 800, fontSize: "48px", marginBottom: "20px" }}>Intelligent Healthcare Routing</h1>
         <p style={{ fontSize: "17px", color: "var(--muted)", maxWidth: "600px", marginBottom: "40px", lineHeight: 1.7 }}>
           Describe your symptoms. Our AI engine instantly determines urgency and routes you to the optimal facility.
         </p>
-
         <div style={{ width: "100%", maxWidth: "660px" }}>
           <textarea
             value={symptoms}

@@ -3,23 +3,17 @@ import { io } from "socket.io-client";
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap } from 'react-leaflet';
-
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
-
 const socket = io("http://localhost:5000");
-
-// ─── GLOBAL STYLES ───────────────────────────────────────────────────────────
 const GlobalStyles = ({dark}) => (
   <style>{`
     @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Outfit:wght@300;400;500;600;700;800&display=swap');
-
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
       --navy:       ${dark?"#07111f":"#f4f6fa"};
       --navy-mid:   ${dark?"#0A1628":"#eaecf3"};
@@ -41,9 +35,7 @@ const GlobalStyles = ({dark}) => (
       --sw: 240px;
       --r: 14px;
     }
-
     html { scroll-behavior: smooth; }
-
     body {
       background: var(--navy);
       color: var(--text);
@@ -51,12 +43,10 @@ const GlobalStyles = ({dark}) => (
       -webkit-font-smoothing: antialiased;
       transition: background 0.3s, color 0.3s;
     }
-
     /* ── Scrollbar ── */
     ::-webkit-scrollbar { width: 4px; height: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: ${dark?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.12)"}; border-radius: 99px; }
-
     /* ── Animations ── */
     @keyframes spin      { to { transform: rotate(360deg); } }
     @keyframes fadeUp    { from { opacity:0; transform:translateY(22px); } to { opacity:1; transform:translateY(0); } }
@@ -71,7 +61,6 @@ const GlobalStyles = ({dark}) => (
     @keyframes dotPop    { 0%{transform:scale(0);opacity:0} 70%{transform:scale(1.3);opacity:1} 100%{transform:scale(1);opacity:1} }
     @keyframes scanline  { from{transform:translateY(-100%)} to{transform:translateY(100vh)} }
     @keyframes float     { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
-
     /* ── Glass card ── */
     .glass {
       background: ${dark?"rgba(13,31,56,0.8)":"rgba(255,255,255,0.85)"};
@@ -85,27 +74,22 @@ const GlobalStyles = ({dark}) => (
       -webkit-backdrop-filter: blur(20px);
       border: 1px solid var(--border-hi);
     }
-
     /* ── Nav triangle ── */
     .live-nav-triangle { background: transparent; border: none; }
-
     /* ── Textarea & Input resets ── */
     textarea, input {
       font-family: 'Outfit', sans-serif;
     }
     textarea:focus, input:focus { outline: none; }
-
     /* ── Map tiles ── */
     .leaflet-tile { ${dark?"filter: brightness(0.8) saturate(0.7) hue-rotate(180deg) invert(1) hue-rotate(180deg);":""} }
     .leaflet-container { background: var(--navy) !important; }
-
     /* ── Priority color dots ── */
     .pri-1 { background: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,0.7); }
     .pri-2 { background: #f97316; box-shadow: 0 0 8px rgba(249,115,22,0.6); }
     .pri-3 { background: #f59e0b; box-shadow: 0 0 8px rgba(245,158,11,0.5); }
     .pri-4 { background: #84cc16; box-shadow: 0 0 8px rgba(132,204,22,0.5); }
     .pri-5 { background: #0FB47A; box-shadow: 0 0 8px rgba(15,180,122,0.5); }
-
     /* ── Responsive ── */
     @media (max-width: 768px) {
       :root { --sw: 0px; }
@@ -121,8 +105,6 @@ const GlobalStyles = ({dark}) => (
     }
   `}</style>
 );
-
-// ─── CONFIG ──────────────────────────────────────────────────────────────────
 const CFG = {
   PEAK_HOURS: [8,9,10,17,18,19,20],
   URGENCY: {
@@ -133,7 +115,6 @@ const CFG = {
     5:{label:"Critical",color:"#991b1b",bg:"#fff1f0"},
   },
 };
-
 const navTriangleIcon = new L.divIcon({
   className: 'live-nav-triangle',
   html: `<div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center">
@@ -144,7 +125,6 @@ const navTriangleIcon = new L.divIcon({
   iconSize: [40, 40],
   iconAnchor: [20, 20],
 });
-
 const mkWards = () => [
   {id:"w1",name:"Emergency",beds:35,occ:32,status:"saturated"},
   {id:"w2",name:"Intensive Care (ICU)",beds:44,occ:41,status:"saturated"},
@@ -152,18 +132,12 @@ const mkWards = () => [
   {id:"w4",name:"Neurology",beds:60,occ:40,status:"accepting"},
   {id:"w5",name:"General Ward",beds:221,occ:141,status:"accepting"},
 ];
-
 const mkHospitals = () => [
   {id:"h1",name:"Adarsha Hospital",area:"Udupi",phone:"+91 820-2520520",coords:{lat:13.3375,lng:74.7441},depts:["Cardiology","Emergency"],beds:380,occ:370},
   {id:"h2",name:"KMC Hospital",area:"Mangaluru",phone:"+91 824-2445858",coords:{lat:12.8703,lng:74.8430},depts:["Cardiology","Emergency","Neurology"],beds:1000,occ:950},
   {id:"h4",name:"Kasturba Hospital",area:"Manipal",phone:"+91 820-2922761",coords:{lat:13.3533,lng:74.7844},depts:["General Medicine","Emergency","Cardiology"],beds:440,occ:120},
   {id:"h5",name:"Chinmayi Hospital",area:"Kundapura",phone:"+91 8254-230005",coords:{lat:13.6234,lng:74.6934},depts:["Neurology","Orthopedics","Emergency"],beds:300,occ:210},
 ];
-
-// ─── SERVICES ────────────────────────────────────────────────────────────────
-
-// Priority is now 3-level: 1=High(red), 2=Medium(yellow), 3=Low(green)
-// severity keywords with explicit override scoring
 const CRITICAL_PATTERNS = [
   /chest\s*pain/i, /heart\s*attack/i, /cardiac\s*arrest/i, /myocardial/i,
   /stroke/i, /facial\s*droop/i, /slurred\s*speech/i,
@@ -177,7 +151,6 @@ const MODERATE_PATTERNS = [
   /fracture/i, /broken/i, /disloc/i, /laceration/i, /deep\s*cut/i,
   /vomiting/i, /severe\s*pain/i, /extreme/i, /worst/i,
 ];
-
 const TriageService = {
   MAP:[
     {kw:["chest pain","cardiac","palpitation","angina","heart attack"],dept:"Cardiology",pri:1},
@@ -194,30 +167,20 @@ const TriageService = {
       for(const k of e.kw) {
         if(t.includes(k)) {
           deptScores[e.dept] = (deptScores[e.dept]||0) + 1;
-          // take the highest severity (lowest number) for this dept
           if(!deptPri[e.dept] || e.pri < deptPri[e.dept]) deptPri[e.dept] = e.pri;
         }
       }
     }
     let dept = "General Ward", maxScore = 0;
     for(const d in deptScores) if(deptScores[d] > maxScore) { maxScore = deptScores[d]; dept = d; }
-
-    // Determine priority by pattern matching — critical patterns always win
     let priority = 3;
     if(CRITICAL_PATTERNS.some(p => p.test(text))) priority = 1;
     else if(MODERATE_PATTERNS.some(p => p.test(text))) priority = 2;
     else if(deptPri[dept]) priority = Math.min(3, deptPri[dept]);
-
-    // Map priority to urgency level (for CFG.URGENCY compat)
     const urgency = priority === 1 ? 5 : priority === 2 ? 3 : 1;
     return { urgency, dept, priority };
   }
 };
-
-// ─── WAIT TIME SERVICE (data-analytics backed) ───────────────────────────────
-// Based on published Indian public hospital benchmarks:
-// Emergency: ~45 min average, ICU: ~90 min, Cardiology: ~35 min, etc.
-// Peak hours multiply wait. Occupancy ratio is the primary driver.
 const BASE_WAIT = {
   "Emergency": 45,
   "Intensive Care (ICU)": 90,
@@ -228,23 +191,15 @@ const BASE_WAIT = {
   "General Medicine": 25,
 };
 const PEAK_MULTIPLIER = [8,9,10,17,18,19,20];
-
 const WaitTimeService = {
-  // Calculate evidence-based wait time for a given dept at a given hospital
-  // Uses occupancy ratio × base wait × time-of-day factor
   calcWait(occRatio, deptName, now = new Date()) {
     const base = BASE_WAIT[deptName] || 30;
-    // Occupancy factor: at 100% = 3× wait, at 50% = 1× wait (linear interpolation)
     const occFactor = 1 + (occRatio * 2);
-    // Peak hour factor
     const hr = now.getHours();
     const peakFactor = PEAK_MULTIPLIER.includes(hr) ? 1.4 : 1.0;
-    // Night (0–5am) is quieter
     const nightFactor = (hr >= 0 && hr < 5) ? 0.6 : 1.0;
     return Math.max(5, Math.round(base * occFactor * peakFactor * nightFactor));
   },
-
-  // For hospital selection screen — computes wait for the matched dept
   forHospital(hospital, dept, liveWards, isKasturba) {
     let occRatio;
     if(isKasturba && liveWards) {
@@ -260,14 +215,11 @@ const WaitTimeService = {
     }
     return this.calcWait(occRatio, dept);
   },
-
-  // For the saturation reroute alert — returns data-backed wait at saturated hospital
   saturationWait(ward) {
     const ratio = ward ? ward.occ / ward.beds : 0.92;
     return this.calcWait(ratio, ward ? ward.name : "Emergency");
   },
 };
-
 const PredictiveService = {
   predict(w){
     const curr=Math.round((w.occ/w.beds)*100);
@@ -276,8 +228,6 @@ const PredictiveService = {
     return {curr,p60:Math.min(100,Math.max(0,Math.round(curr+trend))),trend:trend>0?"up":"down",conf:+(0.76+Math.random()*0.14).toFixed(2)};
   },
 };
-
-// Priority: 1=High(red), 2=Medium(yellow), 3=Low(green)
 const PriorityColor = {
   1: {bg:"rgba(239,68,68,0.15)",  border:"rgba(239,68,68,0.4)",   text:"#ef4444", dot:"#ef4444", label:"High Priority", short:"HIGH"},
   2: {bg:"rgba(245,158,11,0.15)", border:"rgba(245,158,11,0.4)",  text:"#f59e0b", dot:"#f59e0b", label:"Medium Priority", short:"MED"},
@@ -295,7 +245,7 @@ const LogoMark = ({ size = 36, animated = false, dark = true }) => (
       <filter id="glo"><feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
       <filter id="dgl"><feGaussianBlur in="SourceGraphic" stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     </defs>
-    {/* Background circle for light mode visibility */}
+    {}
     {!dark&&<circle cx="70" cy="70" r="68" fill="rgba(29,111,229,0.08)" stroke="rgba(15,180,122,0.25)" strokeWidth="1.5"/>}
     <path d="M 18 108 C 28 72, 56 42, 122 28" stroke="url(#arcG)" strokeWidth="3.5" strokeLinecap="round" fill="none" filter="url(#glo)"
       style={animated ? {strokeDasharray:180,strokeDashoffset:180,animation:'revealPath 1.4s cubic-bezier(0.16,1,0.3,1) 0.2s forwards'} : {}}/>
@@ -307,19 +257,15 @@ const LogoMark = ({ size = 36, animated = false, dark = true }) => (
       style={animated ? {animation:'dotPop 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.15s both',transformOrigin:'18px 108px'} : {}}/>
   </svg>
 );
-
 const Wordmark = ({ size = 22, dark = true }) => (
   <span style={{display:'flex',alignItems:'baseline',gap:1}}>
     <span style={{fontFamily:"'DM Serif Display',serif",fontSize:size,fontWeight:400,letterSpacing:'-0.5px',color:dark?'#e2e8f0':'#0A1628',lineHeight:1}}>Aero</span>
     <span style={{fontFamily:"'DM Serif Display',serif",fontStyle:'italic',fontSize:size,fontWeight:400,letterSpacing:'-0.5px',color:'#0FB47A',lineHeight:1}}>Health</span>
   </span>
 );
-
-// ─── SHARED COMPONENTS ───────────────────────────────────────────────────────
 const Spinner = ({size=20,color="#0FB47A"}) => (
   <div style={{width:size,height:size,border:`2px solid ${color}25`,borderTopColor:color,borderRadius:"50%",animation:"spin .8s linear infinite",flexShrink:0}}/>
 );
-
 const Bar = ({v,max=100,h=5}) => {
   const p=Math.min(100,(v/max)*100);
   const col=p>85?"#ef4444":p>65?"#f59e0b":"#0FB47A";
@@ -329,14 +275,11 @@ const Bar = ({v,max=100,h=5}) => {
     </div>
   );
 };
-
 const StatusBadge = ({status}) => {
   const M={accepting:{bg:"rgba(15,180,122,0.15)",c:"#0FB47A",l:"Accepting"},moderate:{bg:"rgba(245,158,11,0.15)",c:"#f59e0b",l:"Moderate"},saturated:{bg:"rgba(239,68,68,0.15)",c:"#ef4444",l:"Saturated"}};
   const s=M[status]||M.accepting;
   return <span style={{background:s.bg,color:s.c,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:99,letterSpacing:'0.5px',textTransform:'uppercase',border:`1px solid ${s.c}33`}}>{s.l}</span>;
 };
-
-// SevDot: maps sev string OR priority number to colour. Use priority if present.
 const SevDot = ({sev, priority}) => {
   let col;
   if(priority===1) col="#ef4444";
@@ -345,7 +288,6 @@ const SevDot = ({sev, priority}) => {
   else col=sev==="critical"?"#ef4444":sev==="urgent"?"#f59e0b":"#0FB47A";
   return <div style={{width:9,height:9,borderRadius:"50%",background:col,flexShrink:0,boxShadow:`0 0 7px ${col}`,marginTop:2}}/>;
 };
-
 const DarkToggle = ({dark,onToggle}) => (
   <button onClick={onToggle} title={dark?"Switch to light mode":"Switch to dark mode"}
     style={{width:36,height:36,borderRadius:9,border:"1px solid var(--border-hi)",background:"rgba(128,128,128,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"all 0.2s",flexShrink:0}}
@@ -370,8 +312,6 @@ const DarkToggle = ({dark,onToggle}) => (
     )}
   </button>
 );
-
-// ─── NAV DIRECTION ICON ──────────────────────────────────────────────────────
 const NavDirectionIcon = ({instruction=""}) => {
   const t = instruction.toLowerCase();
   const c = "#0FB47A";
@@ -408,17 +348,12 @@ const NavDirectionIcon = ({instruction=""}) => {
     </svg>
   );
 };
-
-// Auto-tracking: follows user position, auto-advances nav instructions by proximity
 const AutoNavTracker = ({centerPos, navInstructions, currentStep, setCurrentStep}) => {
   const map = useMap();
   const prevPos = useRef(null);
-
   React.useEffect(()=>{
     if(!centerPos||!centerPos[0]||!centerPos[1]) return;
     map.flyTo(centerPos, 17, {animate:true, duration:1.2, easeLinearity:0.3});
-
-    // Auto-advance: if we're within ~30m of next waypoint coords, advance step
     if(navInstructions && navInstructions.length > 0 && currentStep < navInstructions.length-1) {
       const next = navInstructions[currentStep+1];
       if(next && next.lat && next.lng) {
@@ -432,8 +367,6 @@ const AutoNavTracker = ({centerPos, navInstructions, currentStep, setCurrentStep
   },[centerPos, map, navInstructions, currentStep, setCurrentStep]);
   return null;
 };
-
-// ─── MAP ICONS ───────────────────────────────────────────────────────────────
 const mkPriorityIcon = (priority) => {
   const colors = { 1:"#ef4444", 2:"#f59e0b", 3:"#0FB47A" };
   const c = colors[priority] || "#94a3b8";
@@ -450,7 +383,6 @@ const mkPriorityIcon = (priority) => {
     popupAnchor: [0, -36],
   });
 };
-
 const hospitalIcon = new L.divIcon({
   className: 'live-nav-triangle',
   html: `<div style="width:36px;height:36px">
@@ -464,8 +396,6 @@ const hospitalIcon = new L.divIcon({
   iconAnchor: [18, 18],
   popupAnchor: [0, -20],
 });
-
-// Priority-coded dot icon for dashboard map (clean circle with glow)
 const mkDotIcon = (priority) => {
   const colors = { 1:"#ef4444", 2:"#f59e0b", 3:"#0FB47A" };
   const c = colors[priority] || "#94a3b8";
@@ -480,7 +410,6 @@ const mkDotIcon = (priority) => {
     popupAnchor: [0, -12],
   });
 };
-
 const LiveRoadMap = ({feed}) => {
   const hospPos=[13.3533,74.7844];
   return (
@@ -491,7 +420,6 @@ const LiveRoadMap = ({feed}) => {
         <Marker position={hospPos} icon={hospitalIcon}><Popup><strong>Kasturba Hospital</strong><br/>Command Center</Popup></Marker>
         {feed.map((p)=>{
           if(!p.lat||!p.lng) return null;
-          // Use priority field from patient data; fall back to sev string
           const pri = p.priority ? Number(p.priority) : (p.sev==="critical"?1:p.sev==="urgent"?2:3);
           const pc = PriorityColor[pri]||PriorityColor[3];
           return (
@@ -509,7 +437,7 @@ const LiveRoadMap = ({feed}) => {
           );
         })}
       </MapContainer>
-      {/* Legend */}
+      {}
       <div style={{position:"absolute",bottom:8,right:8,background:"rgba(255,255,255,0.92)",backdropFilter:"blur(8px)",borderRadius:8,padding:"5px 8px",fontSize:10,fontWeight:600,zIndex:999,display:"flex",gap:8,boxShadow:"0 2px 8px rgba(0,0,0,0.15)"}}>
         {[[1,"#ef4444","High"],[2,"#f59e0b","Med"],[3,"#0FB47A","Low"]].map(([p,c,l])=>(
           <div key={p} style={{display:"flex",alignItems:"center",gap:4}}>
@@ -521,20 +449,16 @@ const LiveRoadMap = ({feed}) => {
     </div>
   );
 };
-
-// ─── SECTION: LANDING ────────────────────────────────────────────────────────
 const Landing = ({onAnalyse,onAdmin,dark,onToggleDark}) => {
   const [symptoms,setSymptoms]=useState("");
   const [focused,setFocused]=useState(false);
-
   return (
     <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",background:"var(--navy)",position:"relative",overflow:"hidden"}}>
-      {/* Background */}
+      {}
       <div style={{position:"absolute",inset:0,backgroundImage:`linear-gradient(${dark?"rgba(15,180,122,0.025)":"rgba(29,111,229,0.04)"} 1px, transparent 1px), linear-gradient(90deg, ${dark?"rgba(15,180,122,0.025)":"rgba(29,111,229,0.04)"} 1px, transparent 1px)`,backgroundSize:"60px 60px",pointerEvents:"none"}}/>
       <div style={{position:"absolute",top:"-20%",right:"-5%",width:560,height:560,background:`radial-gradient(circle, ${dark?"rgba(29,111,229,0.1)":"rgba(29,111,229,0.06)"} 0%, transparent 70%)`,pointerEvents:"none"}}/>
       <div style={{position:"absolute",bottom:"-15%",left:"-5%",width:480,height:480,background:`radial-gradient(circle, ${dark?"rgba(15,180,122,0.07)":"rgba(15,180,122,0.05)"} 0%, transparent 70%)`,pointerEvents:"none"}}/>
-
-      {/* NAV */}
+      {}
       <nav style={{height:60,padding:"0 clamp(20px,5vw,52px)",display:"flex",alignItems:"center",justifyContent:"space-between",position:"relative",zIndex:10,borderBottom:"1px solid var(--border)"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <LogoMark size={32} animated dark={dark}/>
@@ -549,25 +473,16 @@ const Landing = ({onAnalyse,onAdmin,dark,onToggleDark}) => {
           </button>
         </div>
       </nav>
-
-      {/* HERO */}
+      {}
       <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"48px clamp(20px,5vw,40px)",position:"relative",zIndex:1}}>
         <div style={{maxWidth:620,width:"100%",textAlign:"center",animation:"fadeUp 0.7s cubic-bezier(0.16,1,0.3,1) both"}}>
-          {/* Live badge */}
-
-          {/* Headline
-          <h1 style={{fontFamily:"'DM Serif Display',serif",fontSize:"clamp(34px,5vw,60px)",fontWeight:400,lineHeight:1.08,marginBottom:16,letterSpacing:"-1.5px",color:"var(--text)"}}>
-            The fastest path<br/>to <span style={{fontStyle:"italic",color:"#0FB47A"}}>the right care.</span>
-          </h1>
-          <p style={{fontSize:"clamp(13px,1.8vw,15px)",color:"var(--text-dim)",marginBottom:36,lineHeight:1.7,maxWidth:440,margin:"0 auto 36px"}}>
-            Describe your symptoms and get matched to the best available hospital instantly.
-          </p> */}
+          {}
+          {}
           <h1 style={{fontFamily:"'DM Serif Display',serif",fontSize:"clamp(34px,5vw,50px)",fontWeight:100,lineHeight:1.08,marginBottom:16,letterSpacing:"-1.5px",color:"var(--text)"}}>
             What is your <span style={{fontStyle:"italic",color:"#0FB47A"}}>Emergency</span> ?
           </h1>
           <br></br>
-
-          {/* Input card */}
+          {}
           <div style={{background:"var(--navy-card)",border:`1.5px solid ${focused?"rgba(15,180,122,0.4)":"var(--border)"}`,borderRadius:16,padding:4,boxShadow:focused?`0 0 0 3px rgba(15,180,122,0.1)`:`0 20px 50px ${dark?"rgba(0,0,0,0.35)":"rgba(0,0,0,0.08)"}`,transition:"all 0.3s",maxWidth:700,margin:"0 auto"}}>
             <textarea
               value={symptoms}
@@ -587,8 +502,7 @@ const Landing = ({onAnalyse,onAdmin,dark,onToggleDark}) => {
               </button>
             </div>
           </div>
-
-          {/* Compact stats */}
+          {}
           <div style={{display:"flex",gap:28,justifyContent:"center",marginTop:36,flexWrap:"wrap"}}>
             {[["< 90s","Routing time"],["4","Hospitals live"],["100","Customer Served"]].map(([v,l],i)=>(
               <div key={i} style={{textAlign:"center",animation:`fadeUp 0.7s ease ${0.15+i*0.1}s both`}}>
@@ -602,8 +516,6 @@ const Landing = ({onAnalyse,onAdmin,dark,onToggleDark}) => {
     </div>
   );
 };
-
-// ─── SECTION: PATIENT FLOW ───────────────────────────────────────────────────
 const PatientFlow = ({initialSymptoms,onBack,liveWards,dark,onToggleDark}) => {
   const [step,setStep]=useState("analyzing");
   const [triage,setTriage]=useState(null);
@@ -612,7 +524,7 @@ const PatientFlow = ({initialSymptoms,onBack,liveWards,dark,onToggleDark}) => {
   const [selectedHosp,setSelectedHosp]=useState(null);
   const [showRerouteAlert,setShowRerouteAlert]=useState(false);
   const [liveData,setLiveData]=useState(null);
-  const [userLoc,setUserLoc]=useState(null);  // null until GPS resolves
+  const [userLoc,setUserLoc]=useState(null);  
   const [roadEtas,setRoadEtas]=useState({});
   const [gpsStatus,setGpsStatus]=useState("pending");
   const [actionModal,setActionModal]=useState(null);
@@ -620,13 +532,9 @@ const PatientFlow = ({initialSymptoms,onBack,liveWards,dark,onToggleDark}) => {
   const [navInstructions,setNavInstructions]=useState([]);
   const [currentStep,setCurrentStep]=useState(0);
   const watchId=useRef(null);
-  // Once the user dismisses or accepts reroute, never show again
   const rerouteHandled=useRef(false);
-
   useEffect(() => {
-    //  THE HACKATHON SAFETY NET: Block-14 MIT, Manipal
     const MIT_BLOCK_14 = { lat: 13.3484, lng: 74.7922 };
-
     if ("geolocation" in navigator) {
       const getAccuratePosition = () => {
         navigator.geolocation.getCurrentPosition(
@@ -634,7 +542,7 @@ const PatientFlow = ({initialSymptoms,onBack,liveWards,dark,onToggleDark}) => {
             if (pos.coords.accuracy > 2000) {
               console.warn(`GPS accuracy too low (${pos.coords.accuracy}m). Falling back to Block-14.`);
               setUserLoc(MIT_BLOCK_14);
-              setGpsStatus("simulated"); //  Custom status so we know it's the fallback
+              setGpsStatus("simulated"); 
               return;
             }
             setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude });
@@ -645,7 +553,7 @@ const PatientFlow = ({initialSymptoms,onBack,liveWards,dark,onToggleDark}) => {
             setUserLoc(MIT_BLOCK_14);
             setGpsStatus("simulated"); 
           },
-          { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 } // Reduced timeout to 8s so the demo doesn't hang
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 } 
         );
       };
       getAccuratePosition();
@@ -654,16 +562,13 @@ const PatientFlow = ({initialSymptoms,onBack,liveWards,dark,onToggleDark}) => {
       setGpsStatus("simulated");
     }
   }, []);
-
   useEffect(() => {
-    //  Fix: If userLoc is null (GPS failed), set all ETAs to "--" and abort fetching
     if (!userLoc) {
       const emptyEtas = {};
       hospitals.forEach(h => emptyEtas[h.id] = "--");
       setRoadEtas(emptyEtas);
       return; 
     }
-
     const fetchRealEtas = async () => {
       const newEtas = {};
       const hr = new Date().getHours();
@@ -686,34 +591,26 @@ const PatientFlow = ({initialSymptoms,onBack,liveWards,dark,onToggleDark}) => {
     };
     fetchRealEtas();
   }, [userLoc, hospitals]);
-
   useEffect(()=>{
     if(step==="en_route"&&selectedHosp?.name==="Kasturba Hospital"&&triage&&liveWards&&!rerouteHandled.current){
       const targetWard=liveWards.find(w=>w.name===triage.dept||w.name.includes(triage.dept)||triage.dept.includes(w.name.split(" ")[0]));
       if(targetWard){const ratio=targetWard.occ/targetWard.beds;if(ratio>0.85){setShowRerouteAlert(true);}}
     }
   },[liveWards,step,selectedHosp,triage]);
-
   useEffect(()=>{
     socket.on("queue_update",(queue)=>{if(myId){const me=queue.find(p=>p.id===myId);if(me)setLiveData(me);}});
     return()=>socket.off("queue_update");
   },[myId]);
-
   useEffect(()=>{
     setTimeout(()=>{setTriage(TriageService.classify(initialSymptoms));setStep("results");},1800);
   },[initialSymptoms]);
-
   const startJourney = async (hospital, transportMode, phoneNum) => {
-    //  NEW STRICT GUARD: Prevent crash if user tries to start journey without GPS
     if (!userLoc) {
       alert("A highly accurate GPS signal is required to dispatch transport. Please ensure location services are enabled and you are outdoors.");
       return;
     }
-
     setSelectedHosp(hospital);
     setStep("en_route"); 
-    
-    // ... (rest of your initializeTracking code remains exactly the same)
     const initializeTracking=async(startLat,startLng)=>{
       try{
         let routeCoords=[];
@@ -723,7 +620,6 @@ const PatientFlow = ({initialSymptoms,onBack,liveWards,dark,onToggleDark}) => {
           const osrmData=await osrmRes.json();
           if(osrmData.routes&&osrmData.routes[0]){
             routeCoords=osrmData.routes[0].geometry.coordinates;
-            // Extract turn-by-turn instructions
             const legs=osrmData.routes[0].legs||[];
             steps=legs.flatMap(leg=>(leg.steps||[]).map(s=>({
               instruction: s.maneuver?.instruction || formatManeuver(s.maneuver, s.name),
@@ -752,8 +648,6 @@ const PatientFlow = ({initialSymptoms,onBack,liveWards,dark,onToggleDark}) => {
     };
     initializeTracking(userLoc.lat,userLoc.lng);
   };
-
-  // Format OSRM maneuver into readable instruction
   const formatManeuver=(maneuver,streetName)=>{
     if(!maneuver) return null;
     const type=maneuver.type||"";
@@ -769,7 +663,6 @@ const PatientFlow = ({initialSymptoms,onBack,liveWards,dark,onToggleDark}) => {
     if(type==="roundabout"||type==="rotary") return `Enter roundabout, take ${maneuver.exit||"the"} exit${street}`;
     return `${type.replace(/-/g," ")} ${mod}${street}`.trim();
   };
-
   const handleReroute=async()=>{
     rerouteHandled.current=true;
     const backupHosp=hospitals.find(h=>h.name==="Chinmayi Hospital");
@@ -790,12 +683,10 @@ const PatientFlow = ({initialSymptoms,onBack,liveWards,dark,onToggleDark}) => {
     }
     await fetch("http://localhost:5000/api/reroute",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:myId,newDestName:backupHosp.name,newLat:backupHosp.coords.lat,newLng:backupHosp.coords.lng,newRoute})});
   };
-
   const handleDismissReroute=()=>{
     rerouteHandled.current=true;
     setShowRerouteAlert(false);
   };
-
   if(step==="analyzing") return (
     <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"var(--navy)",gap:24,position:"relative",overflow:"hidden"}}>
       <div style={{position:"absolute",inset:0,backgroundImage:"linear-gradient(rgba(15,180,122,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(15,180,122,0.03) 1px,transparent 1px)",backgroundSize:"60px 60px",pointerEvents:"none"}}/>
@@ -811,12 +702,9 @@ const PatientFlow = ({initialSymptoms,onBack,liveWards,dark,onToggleDark}) => {
       </div>
     </div>
   );
-
 if(step==="en_route") return (
-    // 1. Changed minHeight:"100vh" to height:"100dvh" and added overflow:"hidden"
     <div style={{height:"100dvh", overflow:"hidden", background:"var(--navy)", display:"flex", flexDirection:"column", position:"relative"}}>
-      
-      {/* Reroute Alert (Stays exactly the same) */}
+      {}
       {showRerouteAlert&&(()=>{
         const ward=liveWards?.find(w=>w.name===triage?.dept||w.name.includes(triage?.dept||"")||triage?.dept?.includes(w.name.split(" ")[0]));
         const satWait=WaitTimeService.saturationWait(ward);
@@ -824,7 +712,7 @@ if(step==="en_route") return (
         return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:20,backdropFilter:"blur(6px)"}}>
           <div style={{background:"var(--navy-card)",padding:30,borderRadius:18,maxWidth:420,width:"100%",border:"1.5px solid rgba(239,68,68,0.3)",boxShadow:"0 0 60px rgba(239,68,68,0.12)",animation:"scaleIn 0.3s ease"}}>
-            {/* Icon */}
+            {}
             <div style={{width:48,height:48,background:"rgba(239,68,68,0.1)",borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:14}}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                 <path d="M12 2L1 21h22L12 2z" fill="rgba(239,68,68,0.2)" stroke="#ef4444" strokeWidth="2" strokeLinejoin="round"/>
@@ -837,7 +725,7 @@ if(step==="en_route") return (
               <b style={{color:"var(--text)"}}>{selectedHosp?.name}</b> — {triage?.dept} is saturated.<br/>
               Current estimated wait based on live occupancy:
             </p>
-            {/* Data-backed wait */}
+            {}
             <div style={{background:"rgba(239,68,68,0.07)",border:"1px solid rgba(239,68,68,0.2)",padding:"12px 16px",borderRadius:10,marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div>
                 <div style={{fontSize:10,color:"rgba(239,68,68,0.7)",fontWeight:700,letterSpacing:"1px",textTransform:"uppercase",marginBottom:3}}>Est. Wait · {selectedHosp?.name}</div>
@@ -848,7 +736,7 @@ if(step==="en_route") return (
                 <div style={{marginTop:2}}>Based on live capacity data</div>
               </div>
             </div>
-            {/* Recommended alternative */}
+            {}
             <div style={{background:"rgba(15,180,122,0.07)",border:"1px solid rgba(15,180,122,0.2)",padding:"12px 16px",borderRadius:10,marginBottom:20,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div>
                 <div style={{fontSize:10,color:"#0FB47A",fontWeight:700,letterSpacing:"1px",textTransform:"uppercase",marginBottom:3}}>Recommended · Chinmayi Hospital</div>
@@ -865,8 +753,7 @@ if(step==="en_route") return (
         </div>
         );
       })()}
-
-      {/* Full-screen map (Stays exactly the same) */}
+      {}
       <div style={{position:"absolute",inset:0,zIndex:1}}>
         {liveData&&liveData.lat?(
           <MapContainer center={[liveData.lat,liveData.lng]} zoom={17} style={{height:'100%',width:'100%'}} zoomControl={false}>
@@ -883,11 +770,9 @@ if(step==="en_route") return (
           </div>
         )}
       </div>
-
-      {/* 2. Changed minHeight:"100vh" to height:"100%" and adjusted bottom padding so it won't clip */}
+      {}
       <div style={{position:"relative",zIndex:10,pointerEvents:"none",display:"flex",flexDirection:"column",height:"100%",justifyContent:"space-between",padding:"16px 14px 20px 14px",gap:10}}>
-        
-        {/* Top bar — destination + ETA */}
+        {}
         <div style={{background:dark?"rgba(7,17,31,0.92)":"rgba(255,255,255,0.96)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderRadius:16,padding:"11px 16px",display:"flex",alignItems:"center",gap:14,border:"1px solid var(--border)",pointerEvents:"all",boxShadow:"0 2px 20px rgba(0,0,0,0.18)"}}>
           <div style={{width:34,height:34,background:"rgba(15,180,122,0.15)",borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -905,8 +790,7 @@ if(step==="en_route") return (
             <div style={{fontSize:9,color:"var(--text-muted)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.5px"}}>min ETA</div>
           </div>
         </div>
-
-        {/* Navigation instruction panel — auto-updated */}
+        {}
         {navInstructions.length>0&&(
           <div style={{background:dark?"rgba(7,17,31,0.92)":"rgba(255,255,255,0.96)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderRadius:16,border:"1px solid var(--border)",overflow:"hidden",pointerEvents:"all",boxShadow:"0 2px 20px rgba(0,0,0,0.12)"}}>
             <div style={{padding:"12px 14px",display:"flex",alignItems:"center",gap:12}}>
@@ -930,7 +814,7 @@ if(step==="en_route") return (
                 </div>
               )}
             </div>
-            {/* Progress dots */}
+            {}
             <div style={{padding:"6px 14px 10px",display:"flex",alignItems:"center",gap:6}}>
               <div style={{display:"flex",gap:3,flex:1}}>
                 {navInstructions.slice(0,Math.min(navInstructions.length,12)).map((_,i)=>(
@@ -941,10 +825,8 @@ if(step==="en_route") return (
             </div>
           </div>
         )}
-
         <div style={{flex:1}}/>
-
-        {/* 3. Replaced bottom padding logic to strictly anchor it above the phone's native nav bar */}
+        {}
         <div style={{pointerEvents:"all"}}>
           <button onClick={async()=>{
             if(watchId.current) navigator.geolocation.clearWatch(watchId.current);
@@ -960,18 +842,15 @@ if(step==="en_route") return (
       </div>
     </div>
   );
-  // Results step
   const urgencyInfo = triage ? CFG.URGENCY[triage.urgency] : null;
-
   return (
     <div style={{minHeight:"100vh",padding:"32px clamp(16px,4vw,24px)",background:"var(--navy)",display:"flex",flexDirection:"column",alignItems:"center"}}>
       <div style={{maxWidth:700,width:"100%"}}>
-        {/* Back */}
+        {}
         <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,background:"transparent",border:"none",color:"var(--text-muted)",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:14,fontWeight:600,marginBottom:24,padding:0}}>
           ← Back
         </button>
-
-        {/* Triage result card */}
+        {}
         {triage&&(
           <div style={{background:"var(--navy-card)",border:"1px solid var(--border)",borderRadius:16,padding:24,marginBottom:24,animation:"fadeUp 0.5s ease both"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
@@ -998,10 +877,9 @@ if(step==="en_route") return (
                 )}
               </div>
               <div style={{display:"flex",gap:6}}>
-                {/* Bar fills left-to-right: n=1=Low(green), n=2=Medium(yellow), n=3=High(red).
-                    priority=1 → fill all 3 (high), priority=2 → fill 2, priority=3 → fill 1 */}
+                {}
                 {[1,2,3].map(n=>{
-                  const filled = n <= (4 - triage.priority); // p=1→3 filled, p=2→2, p=3→1
+                  const filled = n <= (4 - triage.priority); 
                   const col = n===3?"#ef4444":n===2?"#f59e0b":"#0FB47A";
                   return <div key={n} style={{flex:1,height:8,borderRadius:99,background:filled?col:"rgba(128,128,128,0.12)",transition:"background 0.4s",boxShadow:filled?`0 0 6px ${col}55`:""}}/>
                 })}
@@ -1012,9 +890,7 @@ if(step==="en_route") return (
             </div>
           </div>
         )}
-
         <h3 style={{fontWeight:700,fontSize:13,marginBottom:16,color:"var(--text-dim)",letterSpacing:"0.5px",textTransform:"uppercase"}}>Available Facilities</h3>
-
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           {hospitals.map(h=>{
             const isMatch=h.depts.includes(triage?.dept);
@@ -1067,8 +943,7 @@ if(step==="en_route") return (
             );
           })}
         </div>
-
-        {/* Action Modal */}
+        {}
         {actionModal&&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:20,backdropFilter:"blur(6px)"}}>
             <div style={{background:"var(--navy-card)",padding:30,borderRadius:18,maxWidth:400,width:"100%",border:"1px solid var(--border-hi)",boxShadow:"0 24px 64px rgba(0,0,0,0.5)",animation:"scaleIn 0.25s ease"}}>
@@ -1118,12 +993,9 @@ if(step==="en_route") return (
     </div>
   );
 };
-
-// ─── SECTION: ADMIN LOGIN ────────────────────────────────────────────────────
 const AdminLogin = ({onSuccess,onBack,dark,onToggleDark}) => {
   const [u,setU]=useState(""),p_state=useState(""),p=p_state[0],setP=p_state[1];
   const [err,setErr]=useState(""),loading=useState(false),setL=loading[1],isLoading=loading[0];
-
   const submit=async()=>{
     setL(true);setErr("");
     await new Promise(r=>setTimeout(r,800));
@@ -1131,17 +1003,14 @@ const AdminLogin = ({onSuccess,onBack,dark,onToggleDark}) => {
     else setErr("Invalid credentials. Use admin / admin for this prototype.");
     setL(false);
   };
-
   return (
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"var(--navy)",position:"relative",overflow:"hidden"}}>
       <div style={{position:"absolute",inset:0,backgroundImage:`linear-gradient(${dark?"rgba(15,180,122,0.03)":"rgba(15,180,122,0.05)"} 1px,transparent 1px),linear-gradient(90deg,${dark?"rgba(15,180,122,0.03)":"rgba(15,180,122,0.05)"} 1px,transparent 1px)`,backgroundSize:"60px 60px",pointerEvents:"none"}}/>
       <div style={{position:"absolute",top:"30%",left:"50%",transform:"translate(-50%,-50%)",width:700,height:700,background:"radial-gradient(circle,rgba(29,111,229,0.07) 0%,transparent 70%)",pointerEvents:"none"}}/>
-
-      {/* Dark toggle top-right */}
+      {}
       <div style={{position:"absolute",top:16,right:16,zIndex:10}}>
         <DarkToggle dark={dark} onToggle={onToggleDark}/>
       </div>
-
       <div style={{background:"var(--navy-card)",border:"1px solid var(--border-hi)",borderRadius:20,padding:"44px 40px",maxWidth:400,width:"100%",boxShadow:`0 32px 80px ${dark?"rgba(0,0,0,0.5)":"rgba(0,0,0,0.1)"}`,animation:"scaleIn 0.4s ease",position:"relative",zIndex:1}}>
         <div style={{textAlign:"center",marginBottom:32}}>
           <div style={{animation:"glowPulse 3s ease-in-out infinite",display:"inline-block",marginBottom:16}}>
@@ -1149,7 +1018,6 @@ const AdminLogin = ({onSuccess,onBack,dark,onToggleDark}) => {
           </div>
           <h2 style={{fontFamily:"'DM Serif Display',serif",fontWeight:400,fontSize:24,marginBottom:6,color:"var(--text)"}}>Hospital Portal</h2>
         </div>
-
         {[["Username","text",u,setU,""],["Password","password",p,setP,""]].map(([lbl,type,val,set,ph])=>(
           <div key={lbl} style={{marginBottom:16}}>
             <label style={{display:"block",fontWeight:700,fontSize:11,marginBottom:7,color:"var(--text-muted)",textTransform:"uppercase",letterSpacing:"1px"}}>{lbl}</label>
@@ -1160,9 +1028,7 @@ const AdminLogin = ({onSuccess,onBack,dark,onToggleDark}) => {
             />
           </div>
         ))}
-
         {err&&<div style={{color:"#ef4444",fontSize:12,marginBottom:14,padding:"10px 12px",background:"rgba(239,68,68,0.08)",borderRadius:8,border:"1px solid rgba(239,68,68,0.2)"}}>{err}</div>}
-
         <button onClick={submit} disabled={isLoading} style={{width:"100%",padding:"13px",borderRadius:9,border:"none",background:isLoading?"rgba(255,255,255,0.06)":"linear-gradient(135deg,#1D6FE5,#0FB47A)",color:isLoading?"var(--text-muted)":"#fff",fontWeight:800,fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:12,cursor:isLoading?"default":"pointer",fontFamily:"'Outfit',sans-serif",boxShadow:isLoading?"none":"0 8px 24px rgba(15,180,122,0.25)"}}>
           {isLoading&&<Spinner size={16} color="#fff"/>}{isLoading?"Authenticating…":"Login to Dashboard"}
         </button>
@@ -1171,8 +1037,6 @@ const AdminLogin = ({onSuccess,onBack,dark,onToggleDark}) => {
     </div>
   );
 };
-
-// ─── SECTION: ADMIN DASHBOARD ────────────────────────────────────────────────
 const Admin = ({wards,setWards,onLogout,dark,onToggleDark}) => {
   const [nav,setNav]=useState("dashboard");
   const [alert,setAlert]=useState(true);
@@ -1180,11 +1044,9 @@ const Admin = ({wards,setWards,onLogout,dark,onToggleDark}) => {
   const [now,setNow]=useState(new Date());
   const spark=useRef([75,78,80,77,82,88,90,92,94,90,85,88]);
   const [mobileNavOpen,setMobileNavOpen]=useState(false);
-
   const handleRemovePatient=async(patientId)=>{
     try{await fetch("http://localhost:5000/api/remove_patient",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:patientId})});}catch(err){}
   };
-
   const updateWardCapacity=(wardId,newOcc)=>{
     const val=parseInt(newOcc,10),safeVal=isNaN(val)?0:val;
     setWards(prev=>prev.map(w=>{
@@ -1192,26 +1054,22 @@ const Admin = ({wards,setWards,onLogout,dark,onToggleDark}) => {
       return w;
     }));
   };
-
   useEffect(()=>{
     const iv=setInterval(()=>setNow(new Date()),1000);
     socket.on("queue_update",updatedQueue=>{setFeed(updatedQueue.filter(p=>p.destName==="Kasturba Hospital"));});
     return()=>{clearInterval(iv);};
   },[]);
-
   const totB=wards.reduce((a,w)=>a+w.beds,0),totO=wards.reduce((a,w)=>a+w.occ,0);
   const sysP=Math.round((totO/totB)*100);
   const icuWard=wards.find(w=>w.id==="w2");
   const nearC=wards.filter(w=>(w.occ/w.beds)>.85).length;
   const criticalSubjects=feed.filter(p=>(p.priority?Number(p.priority)===1:p.sev==="critical")).length;
-
   const NAVS=[
     {id:"dashboard",icon:"▦",label:"Command Center",sec:"Overview"},
     {id:"wards",icon:"▣",label:"Departments",sec:"Operations"},
     {id:"triage",icon:"◈",label:"Triage Queue",sec:null},
     {id:"predict",icon:"◎",label:"Predictive Load",sec:"Intelligence"},
   ];
-
   const renderPage=()=>{
     switch(nav){
       case "dashboard": return <DashMain wards={wards} feed={feed} alert={alert} setAlert={setAlert} sysP={sysP} icuFree={icuWard.beds-icuWard.occ} nearC={nearC} criticalSubjects={criticalSubjects} spark={spark.current} updateWardCapacity={updateWardCapacity} onRemovePatient={handleRemovePatient}/>;
@@ -1221,7 +1079,6 @@ const Admin = ({wards,setWards,onLogout,dark,onToggleDark}) => {
       default: return null;
     }
   };
-
   const SidebarContent = () => (
     <>
       <div style={{padding:"22px 18px 18px",borderBottom:"1px solid var(--border)"}}>
@@ -1249,22 +1106,19 @@ const Admin = ({wards,setWards,onLogout,dark,onToggleDark}) => {
       </div>
     </>
   );
-
   return (
     <div style={{display:"flex",minHeight:"100vh",background:"var(--navy)"}}>
-      {/* Desktop Sidebar */}
+      {}
       <aside className="admin-sidebar" style={{width:"var(--sw)",background:"var(--navy-mid)",display:"flex",flexDirection:"column",position:"fixed",top:0,left:0,bottom:0,zIndex:100,overflowY:"auto",borderRight:"1px solid var(--border)"}}>
         <SidebarContent/>
       </aside>
-
-      {/* Mobile nav overlay */}
+      {}
       {mobileNavOpen&&(
         <div style={{position:"fixed",inset:0,zIndex:200,display:"flex"}}>
           <div style={{width:260,background:"var(--navy-mid)",display:"flex",flexDirection:"column",borderRight:"1px solid var(--border)",overflowY:"auto"}}><SidebarContent/></div>
           <div style={{flex:1,background:"rgba(0,0,0,0.6)"}} onClick={()=>setMobileNavOpen(false)}/>
         </div>
       )}
-
       <main className="admin-main" style={{marginLeft:"var(--sw)",flex:1,display:"flex",flexDirection:"column",minHeight:"100vh"}}>
         <header style={{background:"var(--navy-mid)",borderBottom:"1px solid var(--border)",padding:"0 20px",height:58,display:"flex",alignItems:"center",gap:14,position:"sticky",top:0,zIndex:50}}>
           <button onClick={()=>setMobileNavOpen(true)} style={{display:"none",background:"transparent",border:"none",color:"var(--text-dim)",fontSize:20,cursor:"pointer",padding:4,fontFamily:"'Outfit',sans-serif"}}
@@ -1288,8 +1142,6 @@ const Admin = ({wards,setWards,onLogout,dark,onToggleDark}) => {
     </div>
   );
 };
-
-// ─── ADMIN SUB-PAGES ─────────────────────────────────────────────────────────
 const KpiCard = ({bg,icon,label,value,delta,up}) => (
   <div style={{background:"var(--navy-card)",border:"1px solid var(--border)",borderRadius:14,padding:"16px 18px",display:"flex",alignItems:"center",gap:14}}>
     <div style={{width:46,height:46,borderRadius:12,background:bg,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -1302,7 +1154,6 @@ const KpiCard = ({bg,icon,label,value,delta,up}) => (
     </div>
   </div>
 );
-
 const DashMain = ({wards,feed,alert,setAlert,sysP,icuFree,nearC,criticalSubjects,spark,updateWardCapacity,onRemovePatient}) => (
   <div style={{animation:"fadeUp .4s ease"}}>
     {alert&&(
@@ -1317,14 +1168,12 @@ const DashMain = ({wards,feed,alert,setAlert,sysP,icuFree,nearC,criticalSubjects
         <button onClick={()=>setAlert(false)} style={{background:"none",border:"none",color:"rgba(245,158,11,0.6)",fontSize:16,cursor:"pointer",flexShrink:0,lineHeight:1}}>×</button>
       </div>
     )}
-
     <div className="dash-kpi-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
       <KpiCard bg="rgba(29,111,229,0.12)" icon="OCC" label="System Occupancy" value={`${sysP}%`} delta="Based on live ward data" up={true}/>
       <KpiCard bg="rgba(15,180,122,0.12)" icon="ICU" label="Free ICU Beds" value={icuFree} delta={`of ${wards.find(w=>w.id==="w2").beds} total`} up={true}/>
       <KpiCard bg="rgba(245,158,11,0.12)" icon="TEL" label="Incoming Telemetry" value={feed.length} delta="Active data streams" up={true}/>
       <KpiCard bg="rgba(239,68,68,0.12)" icon="P1" label="Critical Subjects" value={criticalSubjects} delta="High priority · Active" up={false}/>
     </div>
-
     <div className="dash-mid-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
       <div style={{background:"var(--navy-card)",border:"1px solid var(--border)",borderRadius:14,padding:20}}>
         <div style={{marginBottom:14}}>
@@ -1333,7 +1182,6 @@ const DashMain = ({wards,feed,alert,setAlert,sysP,icuFree,nearC,criticalSubjects
         </div>
         <LiveRoadMap feed={feed}/>
       </div>
-
       <div style={{background:"var(--navy-card)",border:"1px solid var(--border)",borderRadius:14,padding:20}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
           <div>
@@ -1371,7 +1219,6 @@ const DashMain = ({wards,feed,alert,setAlert,sysP,icuFree,nearC,criticalSubjects
         </div>
       </div>
     </div>
-
     <div className="dash-bot-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
       <div style={{background:"var(--navy-card)",border:"1px solid var(--border)",borderRadius:14,padding:20}}>
         <div style={{fontWeight:700,fontSize:14,color:"var(--text)",marginBottom:16}}>Department Load</div>
@@ -1399,7 +1246,6 @@ const DashMain = ({wards,feed,alert,setAlert,sysP,icuFree,nearC,criticalSubjects
           </tbody>
         </table>
       </div>
-
       <div style={{background:"var(--navy-card)",border:"1px solid var(--border)",borderRadius:14,padding:20}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
           <div style={{width:8,height:8,borderRadius:"50%",background:"#ef4444",animation:"blink 1.2s infinite",flexShrink:0}}/>
@@ -1424,7 +1270,6 @@ const DashMain = ({wards,feed,alert,setAlert,sysP,icuFree,nearC,criticalSubjects
     </div>
   </div>
 );
-
 const WardsPage = ({wards}) => (
   <div style={{animation:"fadeUp .4s ease"}}>
     <h2 style={{fontFamily:"'DM Serif Display',serif",fontWeight:400,fontSize:26,marginBottom:6,color:"var(--text)"}}>Internal Departments</h2>
@@ -1457,7 +1302,6 @@ const WardsPage = ({wards}) => (
     </div>
   </div>
 );
-
 const TriagePage = ({feed,onRemovePatient}) => (
   <div style={{animation:"fadeUp .4s ease"}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}>
@@ -1496,7 +1340,6 @@ const TriagePage = ({feed,onRemovePatient}) => (
     </div>
   </div>
 );
-
 const PredPage = ({wards}) => (
   <div style={{animation:"fadeUp .4s ease"}}>
     <h2 style={{fontFamily:"'DM Serif Display',serif",fontWeight:400,fontSize:26,marginBottom:4,color:"var(--text)"}}>Predictive Load Forecast</h2>
@@ -1528,8 +1371,6 @@ const PredPage = ({wards}) => (
     </div>
   </div>
 );
-
-// ─── APP ROOT ────────────────────────────────────────────────────────────────
 export default function App() {
   const [view,setView]=useState("landing");
   const [initialSymptoms,setInitialSymptoms]=useState("");
@@ -1538,22 +1379,18 @@ export default function App() {
     try{const saved=localStorage.getItem("liveHospitalWards");return saved?JSON.parse(saved):mkWards();}
     catch{return mkWards();}
   });
-
-  // Set browser tab title and favicon
   useEffect(()=>{
     document.title="AeroHealth";
     let link=document.querySelector("link[rel~='icon']");
     if(!link){link=document.createElement('link');link.rel='icon';document.head.appendChild(link);}
     link.href=`data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 140 140'><path d='M18 108 C28 72,56 42,122 28' stroke='%230FB47A' stroke-width='6' stroke-linecap='round' fill='none'/><polyline points='52,76 60,76 66,58 72,88 78,50 84,76 92,76' stroke='%231D6FE5' stroke-width='5' stroke-linecap='round' stroke-linejoin='round' fill='none'/><circle cx='122' cy='28' r='8' fill='%230FB47A'/></svg>`;
   },[]);
-
   useEffect(()=>{localStorage.setItem("liveHospitalWards",JSON.stringify(wards));},[wards]);
   useEffect(()=>{
     const handleStorageChange=e=>{if(e.key==="liveHospitalWards"&&e.newValue)setWards(JSON.parse(e.newValue));};
     window.addEventListener("storage",handleStorageChange);
     return()=>window.removeEventListener("storage",handleStorageChange);
   },[]);
-
   return (
     <>
       <GlobalStyles dark={dark}/>

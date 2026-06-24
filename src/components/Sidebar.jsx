@@ -1,6 +1,5 @@
-// src/components/Sidebar.jsx
-import React from 'react';
 
+import React from 'react';
 export default function Sidebar({ nav, setNav, onLogout }) {
   const NAVS = [
     { id: "dashboard", icon: "⊞", label: "Dashboard", sec: "Overview" },
@@ -8,13 +7,12 @@ export default function Sidebar({ nav, setNav, onLogout }) {
     { id: "triage", icon: "", label: "Triage Queue", sec: "Operations" },
     { id: "predict", icon: "", label: "Predictive Load", sec: "Intelligence" },
   ];
-
   return (
     <aside style={{
       width: "220px", background: "var(--sidebar)", display: "flex", flexDirection: "column",
       position: "fixed", top: 0, left: 0, bottom: 0, zIndex: 100, color: "white"
     }}>
-      {/* Logo */}
+      {}
       <div style={{ padding: "20px 18px", borderBottom: "1px solid rgba(255,255,255,.07)", display: "flex", gap: "10px", alignItems: "center" }}>
         <div style={{ width: 34, height: 34, background: "var(--accent)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}></div>
         <div>
@@ -22,8 +20,7 @@ export default function Sidebar({ nav, setNav, onLogout }) {
           <div style={{ fontSize: 10, color: "rgba(255,255,255,.4)" }}>Command Center</div>
         </div>
       </div>
-
-      {/* Navigation */}
+      {}
       <nav style={{ padding: "12px 10px", flex: 1 }}>
         {NAVS.map(item => (
           <div key={item.id}>
@@ -42,8 +39,7 @@ export default function Sidebar({ nav, setNav, onLogout }) {
           </div>
         ))}
       </nav>
-
-      {/* User Profile */}
+      {}
       <div style={{ padding: "14px 16px", borderTop: "1px solid rgba(255,255,255,.07)", display: "flex", alignItems: "center", gap: "10px" }}>
         <div style={{ width: 34, height: 34, borderRadius: "50%", background: "linear-gradient(135deg, var(--accent), var(--accent2))", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 }}>P</div>
         <div style={{ flex: 1 }}>

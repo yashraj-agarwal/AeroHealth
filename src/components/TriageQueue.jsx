@@ -1,12 +1,9 @@
-// src/components/TriageQueue.jsx
-import React from 'react';
 
-// Notice the "queue = []" below. This tells React: "If there is no data yet, just use an empty list so you don't crash!"
+import React from 'react';
 export default function TriageQueue({ queue = [] }) { 
   return (
     <div className="card" style={{ height: '400px', overflowY: 'auto' }}>
       <h3 style={{ marginTop: 0, fontSize: '15px' }}>AI Triage Queue ({queue?.length || 0})</h3>
-      
       {!queue || queue.length === 0 ? (
         <p style={{ color: '#64748B', fontSize: '13px' }}>Waiting for incoming telemetry...</p>
       ) : (
