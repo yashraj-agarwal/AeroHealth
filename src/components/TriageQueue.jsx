@@ -17,7 +17,7 @@ export default function TriageQueue({ queue = [] }) {
             </div>
             <div style={{ fontSize: '12px', color: '#64748B' }}>{p.desc}</div>
             <span style={{ display: 'inline-block', marginTop: '5px', fontSize: '10px', background: '#eff6ff', color: '#1D6FE5', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
-              🤖 AI Prediction: {p.dept}
+               AI Prediction: {p.dept}
             </span>
           </div>
         ))

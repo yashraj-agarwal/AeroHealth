@@ -624,7 +624,7 @@ const PatientFlow = ({initialSymptoms,onBack,liveWards,dark,onToggleDark}) => {
   const rerouteHandled=useRef(false);
 
   useEffect(() => {
-    // 🟢 THE HACKATHON SAFETY NET: Block-14 MIT, Manipal
+    //  THE HACKATHON SAFETY NET: Block-14 MIT, Manipal
     const MIT_BLOCK_14 = { lat: 13.3484, lng: 74.7922 };
 
     if ("geolocation" in navigator) {
@@ -634,7 +634,7 @@ const PatientFlow = ({initialSymptoms,onBack,liveWards,dark,onToggleDark}) => {
             if (pos.coords.accuracy > 2000) {
               console.warn(`GPS accuracy too low (${pos.coords.accuracy}m). Falling back to Block-14.`);
               setUserLoc(MIT_BLOCK_14);
-              setGpsStatus("simulated"); // 🟢 Custom status so we know it's the fallback
+              setGpsStatus("simulated"); //  Custom status so we know it's the fallback
               return;
             }
             setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude });
@@ -656,7 +656,7 @@ const PatientFlow = ({initialSymptoms,onBack,liveWards,dark,onToggleDark}) => {
   }, []);
 
   useEffect(() => {
-    // 🟢 Fix: If userLoc is null (GPS failed), set all ETAs to "--" and abort fetching
+    //  Fix: If userLoc is null (GPS failed), set all ETAs to "--" and abort fetching
     if (!userLoc) {
       const emptyEtas = {};
       hospitals.forEach(h => emptyEtas[h.id] = "--");
@@ -704,7 +704,7 @@ const PatientFlow = ({initialSymptoms,onBack,liveWards,dark,onToggleDark}) => {
   },[initialSymptoms]);
 
   const startJourney = async (hospital, transportMode, phoneNum) => {
-    // 🟢 NEW STRICT GUARD: Prevent crash if user tries to start journey without GPS
+    //  NEW STRICT GUARD: Prevent crash if user tries to start journey without GPS
     if (!userLoc) {
       alert("A highly accurate GPS signal is required to dispatch transport. Please ensure location services are enabled and you are outdoors.");
       return;
@@ -1268,7 +1268,7 @@ const Admin = ({wards,setWards,onLogout,dark,onToggleDark}) => {
       <main className="admin-main" style={{marginLeft:"var(--sw)",flex:1,display:"flex",flexDirection:"column",minHeight:"100vh"}}>
         <header style={{background:"var(--navy-mid)",borderBottom:"1px solid var(--border)",padding:"0 20px",height:58,display:"flex",alignItems:"center",gap:14,position:"sticky",top:0,zIndex:50}}>
           <button onClick={()=>setMobileNavOpen(true)} style={{display:"none",background:"transparent",border:"none",color:"var(--text-dim)",fontSize:20,cursor:"pointer",padding:4,fontFamily:"'Outfit',sans-serif"}}
-            className="mobile-menu-btn">☰</button>
+            className="mobile-menu-btn"></button>
           <div style={{flex:1,fontWeight:800,fontSize:15,color:"var(--text)"}}>{NAVS.find(n=>n.id===nav)?.label} <span style={{color:"var(--text-muted)",fontWeight:400,fontSize:12,marginLeft:6}}>· Kasturba Hospital</span></div>
           <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
             <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -1277,7 +1277,7 @@ const Admin = ({wards,setWards,onLogout,dark,onToggleDark}) => {
             </div>
             <span style={{fontSize:11,color:"var(--text-muted)"}}>{now.toLocaleTimeString()}</span>
             {nearC>0&&<div style={{display:"flex",alignItems:"center",gap:6,background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:99,padding:"4px 12px"}}>
-              <span style={{fontSize:10,color:"#ef4444",fontWeight:700}}>⚠ {nearC} Saturated</span>
+              <span style={{fontSize:10,color:"#ef4444",fontWeight:700}}> {nearC} Saturated</span>
             </div>}
             <DarkToggle dark={dark} onToggle={onToggleDark}/>
           </div>

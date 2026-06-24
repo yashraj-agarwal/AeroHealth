@@ -4,9 +4,9 @@ import React from 'react';
 export default function Sidebar({ nav, setNav, onLogout }) {
   const NAVS = [
     { id: "dashboard", icon: "⊞", label: "Dashboard", sec: "Overview" },
-    { id: "livemap", icon: "🗺", label: "Live GPS", sec: null },
-    { id: "triage", icon: "🔔", label: "Triage Queue", sec: "Operations" },
-    { id: "predict", icon: "📈", label: "Predictive Load", sec: "Intelligence" },
+    { id: "livemap", icon: "", label: "Live GPS", sec: null },
+    { id: "triage", icon: "", label: "Triage Queue", sec: "Operations" },
+    { id: "predict", icon: "", label: "Predictive Load", sec: "Intelligence" },
   ];
 
   return (
@@ -16,7 +16,7 @@ export default function Sidebar({ nav, setNav, onLogout }) {
     }}>
       {/* Logo */}
       <div style={{ padding: "20px 18px", borderBottom: "1px solid rgba(255,255,255,.07)", display: "flex", gap: "10px", alignItems: "center" }}>
-        <div style={{ width: 34, height: 34, background: "var(--accent)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🩺</div>
+        <div style={{ width: 34, height: 34, background: "var(--accent)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}></div>
         <div>
           <div style={{ fontSize: 16, fontWeight: 800 }}>AeroHealth</div>
           <div style={{ fontSize: 10, color: "rgba(255,255,255,.4)" }}>Command Center</div>

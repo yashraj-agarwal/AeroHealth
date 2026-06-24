@@ -24,7 +24,7 @@ export default function AdminLogin({ onSuccess, onBack }) {
       <div style={{ background: "var(--card)", borderRadius: 16, padding: "44px 38px", maxWidth: 400, width: "100%", boxShadow: "0 8px 32px rgba(0,0,0,.10)" }}>
         
         <div style={{ textAlign: "center", marginBottom: 30 }}>
-          <div style={{ width: 52, height: 52, borderRadius: 12, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, margin: "0 auto 14px" }}>🔐</div>
+          <div style={{ width: 52, height: 52, borderRadius: 12, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, margin: "0 auto 14px" }}></div>
           <h2 style={{ fontWeight: 800, fontSize: 22, marginBottom: 4 }}>Admin Access</h2>
           <p style={{ color: "var(--muted)", fontSize: 13 }}>AeroHealth Command Center</p>
         </div>
