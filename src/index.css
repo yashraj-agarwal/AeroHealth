@@ -1,0 +1,79 @@
+:root {
+  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.6;
+  font-weight: 400;
+
+  /* AeroHealth Design System */
+  --bg: #F8FAFC;
+  --card: #FFFFFF;
+  --border: #E2E8F0;
+
+  --text: #0F172A;
+  --muted: #64748B;
+  --sidebar: #0F172A;
+
+  --accent: #000000;      /* Primary Blue */
+  --accent2: #14B8A6;     /* Teal */
+  --warn: #E11D48;
+  --amber: #F59E0B;       /* Warning Orange */
+
+  /* FIX: THESE VARIABLES PREVENT THE SIDEBAR OVERLAP */
+  --sw: 220px;            /* Sidebar Width */
+  --r: 12px;              /* Global Border Radius */
+  
+  /* Subtle Shadows for Cards */
+  --shsm: 0 1px 3px rgba(0,0,0,.06);
+  --shmd: 0 4px 16px rgba(0,0,0,.08);
+  --shlg: 0 8px 32px rgba(0,0,0,.10);
+
+  color: var(--text);
+  background-color: var(--bg);
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  overflow-x: hidden; /* Prevents horizontal scrolling */
+}
+
+/* Fix input + textarea color & background */
+input,
+textarea,
+select {
+  font-family: inherit;
+  color: #1E293B;
+  background-color: #FFFFFF;
+  border: 1px solid #E2E8F0;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #94A3B8;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent2);
+}
+
+/* Custom Scrollbar for Triage Queue */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+/* Smooth UI Animations */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes scaleIn { from { opacity: 0; transform: scale(.93); } to { opacity: 1; transform: scale(1); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pd { 0%, 100% { box-shadow: 0 0 0 0 rgba(20, 184, 166, 0.5); } 50% { box-shadow: 0 0 0 5px rgba(20, 184, 166, 0); } }
