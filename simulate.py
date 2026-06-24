@@ -66,7 +66,7 @@ def simulate_patient(patient_num):
     start_lat = zone["lat"] + random.uniform(-0.015, 0.015)
     start_lng = zone["lng"] + random.uniform(-0.015, 0.015)
     
-    print(f"🚑 Dispatching {name} from {zone['name']}")
+    print(f"Dispatching {name} from {zone['name']}")
     
     route_coords = fetch_osrm_route({"lat": start_lat, "lng": start_lng}, KASTURBA_COORDS)
     if not route_coords or len(route_coords) < 2: return
@@ -84,7 +84,7 @@ def simulate_patient(patient_num):
         patient_id = res.json().get("id")
         if not patient_id: return
     except Exception:
-        print(f"❌ Backend refused connection for {name}.")
+        print(f"Backend refused connection for {name}.")
         return
 
     # ─── SMOOTH DRIVING LOGIC ───
@@ -132,11 +132,11 @@ def simulate_patient(patient_num):
         current_lon, current_lat = next_lon, next_lat
         route_idx += 1
 
-    print(f"✅ {name} has arrived.")
+    print(f"{name} has arrived.")
 
 # ─── STARTUP ────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print("\n🚀 AEROHEALTH SMOOTH TELEMETRY SIMULATOR\n")
+    print("\n--- AEROHEALTH SMOOTH TELEMETRY SIMULATOR ---\n")
     
     NUM_PATIENTS = 5
     for i in range(1, NUM_PATIENTS + 1):

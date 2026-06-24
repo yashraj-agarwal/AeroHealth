@@ -14,7 +14,7 @@ const io = new Server(server, { cors: { origin: "*" } });
 
 let triageQueue = [];
 
-// ⚙️ THE GPS ENGINE (TRUE LIVE TRACKING)
+// GPS Engine: Real-time tracking
 setInterval(() => {
   let changed = false;
   triageQueue = triageQueue.filter(p => {
@@ -27,7 +27,7 @@ setInterval(() => {
     
     // AUTO-DISCHARGE: If you physically walk to the hospital (< ~80 meters)
     if (dist < 0.0008) {
-      console.log(`✅ Patient Arrived at ${p.destName}: ${p.name}`);
+      console.log(`Patient Arrived at ${p.destName}: ${p.name}`);
       changed = true;
       return false; 
     }
@@ -57,7 +57,7 @@ app.post('/api/triage', (req, res) => {
   res.status(200).json({ success: true, id: patient.id });
 });
 
-// 🟢 NEW API 2: Receive Live GPS Updates from the moving User
+// API 2: Receive Live GPS Updates
 app.post('/api/update_location', (req, res) => {
   const { id, lat, lng } = req.body;
   const patient = triageQueue.find(p => p.id === id);
@@ -76,7 +76,7 @@ app.post('/api/reroute', (req, res) => {
   const { id, newDestName, newLat, newLng, newRoute } = req.body;
   const patient = triageQueue.find(p => p.id === id);
   if (patient) {
-    console.log(`🔄 REROUTING: ${patient.name} diverted to ${newDestName}`);
+    console.log(`REROUTING: ${patient.name} diverted to ${newDestName}`);
     patient.destName = newDestName;
     patient.destLat = newLat;
     patient.destLng = newLng;
@@ -97,7 +97,7 @@ app.post('/api/remove_patient', (req, res) => {
   triageQueue = triageQueue.filter(p => p.id !== id);
   
   if (triageQueue.length < initialLength) {
-    console.log(`👋 Patient Manually Removed: ${id}`);
+    console.log(`Patient Manually Removed: ${id}`);
     io.emit('queue_update', triageQueue); // Instantly update all screens
     res.json({ success: true });
   } else {
@@ -109,4 +109,4 @@ io.on('connection', (socket) => {
   socket.emit('queue_update', triageQueue); 
 });
 
-server.listen(5000, () => console.log("🚀 AeroHealth Live Tracking Engine running on port 5000"));
+server.listen(5000, () => console.log("AeroHealth Live Tracking Engine running on port 5000"));
