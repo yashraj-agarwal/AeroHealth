@@ -1,0 +1,50 @@
+:root {
+  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.6;
+  font-weight: 400;
+
+  /* AeroHealth Design System */
+  --bg: #F8FAFC;
+  --card: #FFFFFF;
+  --border: #E2E8F0;
+
+  --text: #0F172A;
+  --muted: #64748B;
+  --sidebar: #0F172A;
+
+  --accent: #1D6FE5;      /* Primary Blue */
+  --accent2: #14B8A6;     /* Teal */
+  --warn: #E11D48;
+
+  color: var(--text);
+  background-color: var(--bg);
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Fix input + textarea color & background */
+input,
+textarea,
+select {
+  font-family: inherit;
+  color: #1E293B;          /* Dark readable text */
+  background-color: #FFFFFF;  /* White background */
+  border: 1px solid #E2E8F0;
+}
+
+/* Fix placeholder color */
+input::placeholder,
+textarea::placeholder {
+  color: #94A3B8;
+}
+
+/* Optional: Remove unwanted browser dark styling */
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: #14B8A6;
+}
