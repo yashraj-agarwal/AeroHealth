@@ -26,6 +26,8 @@ const express = require('express');
 const http    = require('http');
 const { Server } = require('socket.io');
 const cors    = require('cors');
+const fs      = require('fs');
+const path    = require('path');
 
 // ── AI services ──────────────────────────────────────────────────────────────
 const { classifySymptoms } = require('./services/triageService');
@@ -44,10 +46,20 @@ const server = http.createServer(app);
 const io     = new Server(server, { cors: { origin: '*' } });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LIVE TRIAGE QUEUE  (unchanged data structure)
+// DATA SOURCES
 // ─────────────────────────────────────────────────────────────────────────────
 
 let triageQueue = [];
+let hospitals = [];
+try {
+  const hospitalsPath = path.join(__dirname, 'data', 'hospitals.json');
+  hospitals = JSON.parse(fs.readFileSync(hospitalsPath, 'utf-8'));
+  console.log(`Loaded ${hospitals.length} hospitals from data file.`);
+} catch (err) {
+  console.error("Failed to load hospitals data:", err.message);
+  // Fallback to empty array if file is missing
+  hospitals = [];
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SYSTEM HEALTH METRICS
@@ -382,6 +394,46 @@ app.post('/api/remove_patient', (req, res) => {
   triageQueue = triageQueue.filter(p => p.id !== id);
   io.emit('queue_update', triageQueue);
   res.status(200).json({ ok: true });
+});
+
+/**
+ * GET /api/hospitals
+ * ───────────────────
+ * Returns the full list of hospitals, including live capacity and status.
+ */
+app.get('/api/hospitals', (req, res) => {
+  res.status(200).json(hospitals);
+});
+
+/**
+ * PUT /api/hospitals/:id
+ * ───────────────────────
+ * Update a hospital's capacity, status, etc. Admin dashboard uses this.
+ */
+app.put('/api/hospitals/:id', (req, res) => {
+  const { id } = req.params;
+  const updateData = req.body;
+  const hospitalIndex = hospitals.findIndex(h => h.id === id);
+
+  if (hospitalIndex === -1) {
+    return res.status(404).json({ error: 'Hospital not found' });
+  }
+
+  // Update hospital in memory
+  hospitals[hospitalIndex] = { ...hospitals[hospitalIndex], ...updateData };
+  
+  // Persist to file (optional, but good for demo)
+  try {
+    const hospitalsPath = path.join(__dirname, 'data', 'hospitals.json');
+    fs.writeFileSync(hospitalsPath, JSON.stringify(hospitals, null, 2));
+  } catch (err) {
+    console.error("Failed to save hospitals data:", err.message);
+  }
+
+  // Broadcast the update so dashboards reflect the change immediately
+  io.emit('hospitals_update', hospitals);
+  
+  res.status(200).json({ ok: true, hospital: hospitals[hospitalIndex] });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

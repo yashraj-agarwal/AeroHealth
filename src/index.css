@@ -1,50 +1,153 @@
-:root {
-  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.6;
-  font-weight: 400;
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+@import "leaflet/dist/leaflet.css";
 
-  /* AeroHealth Design System */
-  --bg: #F8FAFC;
-  --card: #FFFFFF;
-  --border: #E2E8F0;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-  --text: #0F172A;
-  --muted: #64748B;
-  --sidebar: #0F172A;
+@layer base {
+  :root {
+    /* Base colors */
+    --background: #09090b;
+    --surface: #18181b;
+    --surface-elevated: #27272a;
+    
+    /* Text colors - Light on dark */
+    --foreground: #f4f4f5;
+    --foreground-muted: #a1a1aa;
+    
+    /* Text colors - Dark on light (for light cards) */
+    --foreground-inverse: #09090b;
+    --foreground-muted-inverse: #3f3f46;
 
-  --accent: #1D6FE5;      /* Primary Blue */
-  --accent2: #14B8A6;     /* Teal */
-  --warn: #E11D48;
+    /* Semantic colors */
+    --primary: #ffffff;
+    --primary-foreground: #09090b;
+    
+    /* AeroHealth Specific Accents */
+    --accent: #3b82f6; /* Blue */
+    --accent-foreground: #ffffff;
+    --accent2: #10b981; /* Green */
+    
+    /* Status Colors */
+    --success: #10b981;
+    --success-bg: rgba(16, 185, 129, 0.1);
+    
+    --warning: #f59e0b; /* Amber */
+    --warning-bg: rgba(245, 158, 11, 0.1);
+    
+    --danger: #ef4444; /* Red */
+    --danger-bg: rgba(239, 68, 68, 0.1);
+    
+    --info: #3b82f6; /* Blue */
+    --info-bg: rgba(59, 130, 246, 0.1);
 
-  color: var(--text);
-  background-color: var(--bg);
+    /* Borders */
+    --border: rgba(63, 63, 70, 0.5); /* zinc-700/50 */
+    --ring: #3b82f6;
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+    /* Legacy mapping for App.jsx compatibility */
+    --sidebar: #f4f4f5;
+    --warn: var(--danger);
+    --amber: var(--warning);
+    --muted: var(--foreground-muted);
+    --text: var(--foreground);
+    --card: var(--surface);
+
+    /* UI Measurements */
+    --sw: 220px;
+    --r: 12px;
+    --radius: 0.75rem;
+
+    /* Shadows */
+    --shsm: 0 1px 3px rgba(0,0,0,.15);
+    --shmd: 0 4px 16px rgba(0,0,0,.25);
+    --shlg: 0 8px 32px rgba(0,0,0,.40);
+  }
 }
 
-/* Fix input + textarea color & background */
-input,
-textarea,
-select {
-  font-family: inherit;
-  color: #1E293B;          /* Dark readable text */
-  background-color: #FFFFFF;  /* White background */
-  border: 1px solid #E2E8F0;
-}
-
-/* Fix placeholder color */
-input::placeholder,
-textarea::placeholder {
-  color: #94A3B8;
-}
-
-/* Optional: Remove unwanted browser dark styling */
-input:focus,
-textarea:focus,
-select:focus {
-  outline: none;
-  border-color: #14B8A6;
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  
+  html, body {
+    height: 100%;
+    width: 100%;
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    background: var(--background);
+    color: var(--foreground);
+    overflow-x: hidden;
+  }
+  
+  #root {
+    min-height: 100vh;
+    width: 100%;
+  }
+  
+  /* Disable Vite overlays in UI */
+  vite-plugin-checker-error-overlay,
+  #vite-error-overlay,
+  [data-vite-dev-id] {
+    display: none !important;
+  }
+  
+  button, input, textarea {
+    font-family: inherit;
+  }
+  
+  button {
+    cursor: pointer;
+  }
+  
+  /* Scrollbars */
+  ::-webkit-scrollbar {
+    width: 5px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #27272a;
+    border-radius: 99px;
+  }
+  
+  /* Animations */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-10px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(.93); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  @keyframes pd {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, .5); }
+    50% { box-shadow: 0 0 0 5px rgba(16, 185, 129, 0); }
+  }
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .4; }
+  }
+  @keyframes toast {
+    from { opacity: 0; transform: translateX(60px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  
+  /* Fix for leaflet popup colors */
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+    background: var(--surface) !important;
+    color: var(--foreground) !important;
+    border: 1px solid var(--border);
+    box-shadow: var(--shmd) !important;
+  }
+  .leaflet-popup-close-button {
+    color: var(--foreground-muted) !important;
+  }
 }
