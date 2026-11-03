@@ -134,8 +134,6 @@ function mapEntitiesToTriage(entities, originalText) {
 
   // Count critical/high-signal entity categories
   const diagnosisCount  = entities.filter(e => e.category === 'Diagnosis').length;
-  const symptomCount    = entities.filter(e => e.category === 'SymptomOrSign').length;
-  const bodyPartCount   = entities.filter(e => e.category === 'BodyStructure').length;
 
   // Run the unified scorer on the combined token string
   const { dept, urgency } = runKeywordClassifier(allTokens);

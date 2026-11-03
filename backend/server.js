@@ -37,13 +37,15 @@ const { forecastCapacity } = require('./services/capacityService');
 // EXPRESS + SOCKET.IO SETUP  (identical to original)
 // ─────────────────────────────────────────────────────────────────────────────
 
+const allowedOrigins = process.env.FRONTEND_ORIGINS?.split(',').map(origin => origin.trim()).filter(Boolean);
+const corsOptions = { origin: allowedOrigins?.length ? allowedOrigins : '*' };
 const app = express();
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 const server = http.createServer(app);
-const io     = new Server(server, { cors: { origin: '*' } });
+const io     = new Server(server, { cors: corsOptions });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA SOURCES
@@ -51,8 +53,8 @@ const io     = new Server(server, { cors: { origin: '*' } });
 
 let triageQueue = [];
 let hospitals = [];
+const hospitalsPath = process.env.HOSPITALS_DATA_PATH || path.join(__dirname, "data", "hospitals.json");
 try {
-  const hospitalsPath = path.join(__dirname, 'data', 'hospitals.json');
   hospitals = JSON.parse(fs.readFileSync(hospitalsPath, 'utf-8'));
   console.log(`Loaded ${hospitals.length} hospitals from data file.`);
 } catch (err) {
@@ -419,16 +421,33 @@ app.put('/api/hospitals/:id', (req, res) => {
     return res.status(404).json({ error: 'Hospital not found' });
   }
 
-  // Update hospital in memory
-  hospitals[hospitalIndex] = { ...hospitals[hospitalIndex], ...updateData };
-  
-  // Persist to file (optional, but good for demo)
+  if (!updateData || typeof updateData !== 'object' || Array.isArray(updateData)) {
+    return res.status(400).json({ error: 'Expected a hospital update object.' });
+  }
+
+  const updated = { ...hospitals[hospitalIndex], ...updateData, id };
+  for (const [occupied, total] of [['occ', 'beds'], ['icuO', 'icuT'], ['emgO', 'emgT']]) {
+    if (!Number.isInteger(updated[total]) || updated[total] < 0 ||
+        !Number.isInteger(updated[occupied]) || updated[occupied] < 0 ||
+        updated[occupied] > updated[total]) {
+      return res.status(400).json({ error: 'Occupancy must be a whole number within bed capacity.' });
+    }
+  }
+  if (updated.beds === 0) return res.status(400).json({ error: 'Ward capacity must be positive.' });
+  if ('occ' in updateData && !('status' in updateData)) {
+    const load = updated.occ / updated.beds;
+    updated.status = load >= 0.9 ? 'saturated' : load >= 0.75 ? 'moderate' : 'accepting';
+  }
+
+  const nextHospitals = hospitals.map((hospital, index) => index === hospitalIndex ? updated : hospital);
   try {
-    const hospitalsPath = path.join(__dirname, 'data', 'hospitals.json');
-    fs.writeFileSync(hospitalsPath, JSON.stringify(hospitals, null, 2));
+    fs.writeFileSync(`${hospitalsPath}.tmp`, JSON.stringify(nextHospitals, null, 2));
+    fs.renameSync(`${hospitalsPath}.tmp`, hospitalsPath);
   } catch (err) {
     console.error("Failed to save hospitals data:", err.message);
+    return res.status(500).json({ error: 'Unable to save hospital capacity.' });
   }
+  hospitals = nextHospitals;
 
   // Broadcast the update so dashboards reflect the change immediately
   io.emit('hospitals_update', hospitals);
@@ -443,6 +462,7 @@ app.put('/api/hospitals/:id', (req, res) => {
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
   // Send current state to newly connected admin dashboard
+  socket.emit('hospitals_update', hospitals);
   socket.emit('queue_update', triageQueue);
   // Also send the current health state so the System Health panel populates immediately
   const { _latencySum: _, ...azurePublic } = health.azure;

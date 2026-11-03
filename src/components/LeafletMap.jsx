@@ -1,15 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from 'react-leaflet';
 import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-
-// Fix Leaflet marker icons
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
 
 // Custom Icons
 const createIcon = (color) => {
@@ -41,53 +32,55 @@ const MapController = ({ userPos, destPos }) => {
   useEffect(() => {
     if (userPos && destPos) {
       const bounds = L.latLngBounds([userPos, destPos]);
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14, animate: !matchMedia("(prefers-reduced-motion: reduce)").matches });
     } else if (userPos) {
-      map.flyTo(userPos, 13);
+      map.setView(userPos, 13, { animate: false });
     }
   }, [userPos, destPos, map]);
   return null;
 };
 
 const LeafletMap = ({ hospitals, userCoords, selectedHospitalId }) => {
-  const [routeLine, setRouteLine] = useState(null);
-
+  const [route, setRoute] = useState(null);
   const selectedHospital = hospitals.find(h => h.id === selectedHospitalId);
-  const destCoords = selectedHospital ? [selectedHospital.coords.lat, selectedHospital.coords.lng] : null;
-  const userPos = userCoords ? [userCoords.lat, userCoords.lng] : null;
+  const { lat: destLat, lng: destLng } = selectedHospital?.coords ?? {};
+  const { lat, lng } = userCoords ?? {};
+  const destCoords = useMemo(() => destLat == null ? null : [destLat, destLng], [destLat, destLng]);
+  const userPos = useMemo(() => lat == null ? null : [lat, lng], [lat, lng]);
+  const routeKey = userPos && destCoords ? [...userPos, ...destCoords].join(",") : null;
+  const routeLine = routeKey
+    ? route?.key === routeKey ? route.line : [userPos, destCoords]
+    : null;
 
-  // Fetch route from ORS
   useEffect(() => {
-    if (userPos && destCoords) {
-      const fetchRoute = async () => {
-        try {
-          const orsToken = import.meta.env.VITE_ORS_TOKEN;
-          if (!orsToken) {
-            console.warn("No VITE_ORS_TOKEN found, falling back to straight line.");
-            setRouteLine([userPos, destCoords]);
-            return;
-          }
-          
-          const url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${orsToken}&start=${userPos[1]},${userPos[0]}&end=${destCoords[1]},${destCoords[0]}`;
-          const res = await fetch(url);
-          const data = await res.json();
-          if (data.features && data.features.length > 0) {
-            // ORS returns GeoJSON coordinates in [lng, lat]
-            const coords = data.features[0].geometry.coordinates.map(c => [c[1], c[0]]); 
-            setRouteLine(coords);
-          } else {
-            setRouteLine([userPos, destCoords]);
-          }
-        } catch (error) {
-          console.error("Failed to fetch route from ORS", error);
-          setRouteLine([userPos, destCoords]); // Fallback to straight line
+    const token = import.meta.env.VITE_ORS_TOKEN;
+    if (!routeKey || !token) return;
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      api_key: token,
+      start: `${lng},${lat}`,
+      end: `${destLng},${destLat}`,
+    });
+
+    async function fetchRoute() {
+      try {
+        const response = await fetch(`https://api.openrouteservice.org/v2/directions/driving-car?${params}`, {
+          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]),
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        const coordinates = data.features?.[0]?.geometry?.coordinates;
+        if (!controller.signal.aborted && coordinates?.length) {
+          setRoute({ key: routeKey, line: coordinates.map(([longitude, latitude]) => [latitude, longitude]) });
         }
-      };
-      fetchRoute();
-    } else {
-      setRouteLine(null);
+      } catch {
+        // The straight-line preview remains available.
+      }
     }
-  }, [userCoords, selectedHospitalId]);
+
+    fetchRoute();
+    return () => controller.abort();
+  }, [routeKey, lat, lng, destLat, destLng]);
 
   return (
     <div className="bg-[#18181b] rounded-xl border border-zinc-800/50 overflow-hidden relative" style={{ height: '400px' }}>
@@ -95,11 +88,10 @@ const LeafletMap = ({ hospitals, userCoords, selectedHospitalId }) => {
         center={userPos || [12.9716, 77.5946]} 
         zoom={12} 
         style={{ height: '100%', width: '100%' }}
-        zoomControl={false}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> | <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=cb1_2vft_1_aea203c8ad125297b409a68d" // Dark theme tiles with API key
+          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
         
         <MapController userPos={userPos} destPos={destCoords} />
@@ -115,13 +107,15 @@ const LeafletMap = ({ hospitals, userCoords, selectedHospitalId }) => {
         {hospitals.map(h => {
           const isSelected = h.id === selectedHospitalId;
           const pos = [h.coords.lat, h.coords.lng];
-          const color = isSelected ? '#10b981' : (h.occ / h.beds > 0.85 ? '#ef4444' : (h.occ / h.beds > 0.65 ? '#f59e0b' : '#3f3f46'));
+          const color = isSelected ? '#10b981' : (h.occ / h.beds > 0.85 ? '#ef4444' : (h.occ / h.beds > 0.65 ? '#f59e0b' : '#34d399'));
           
           return (
             <Marker 
               key={h.id} 
               position={pos} 
               icon={isSelected ? recommendedIcon : createIcon(color)}
+              title={h.name}
+              alt={h.name}
               zIndexOffset={isSelected ? 1000 : 0}
             >
               <Popup>
@@ -164,18 +158,6 @@ const LeafletMap = ({ hospitals, userCoords, selectedHospitalId }) => {
         )}
       </MapContainer>
       
-      {/* Route animation CSS */}
-      <style dangerouslySetInnerHTML={{__html: `
-        .route-animation {
-          stroke-dasharray: 10;
-          animation: dash 20s linear infinite;
-        }
-        @keyframes dash {
-          to {
-            stroke-dashoffset: -1000;
-          }
-        }
-      `}} />
     </div>
   );
 };

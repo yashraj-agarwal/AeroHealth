@@ -261,6 +261,16 @@ npm run dev     # with nodemon auto-reload
 python simulate.py
 ```
 
+The Vite development and preview servers forward `/api` and `/socket.io` to the backend on port 3001. A static deployment needs the same paths routed to Express on the frontend origin, including Socket.IO WebSocket upgrades. The Command Center uses the demo login `admin / admin`. Use synthetic records in this environment.
+
+### Deploy the frontend on Vercel
+
+1. Run the Express backend as a single long-running Node service with HTTPS and WebSocket support. Use the `backend` directory, install with `npm ci`, and start with `npm start`. Set Azure credentials on this service if needed.
+2. Import the GitHub repository into Vercel. Use the repository root, the Vite preset, and the settings in `vercel.json`. Set `VITE_BACKEND_URL` to the backend HTTPS origin (without `/api`) in each Vercel environment and deploy.
+3. Set `FRONTEND_ORIGINS` on the backend to the comma-separated Vercel or custom origins that should receive CORS headers. Verify the backend's `/api/health` endpoint and confirm the Command Center connects.
+
+For durable hospital edits, seed a writable persistent volume with `backend/data/hospitals.json` and set `HOSPITALS_DATA_PATH` to that file. The triage queue is held in memory and resets on backend restart. This setup uses demo admin access and is for synthetic data.
+
 ### 4. Verify the AI triage works
 
 ```bash

@@ -1,25 +1,15 @@
-/**
- * AeroHealth — Intelligent Healthcare Load Balancing
- * ====================================================
- * Prototype with:
- *  - Admin dashboard matching reference design (sidebar, KPIs, map, triage feed, table)
- *  - Patient flow with animated real-time routing map + ambulance animation
- *  - Live telemetry simulation (updates every 3s)
- *  - Semantic triage engine (rule-based, Azure OpenAI-ready)
- *  - Health score engine (weighted, configurable)
- *  - Predictive load model (Azure ML-ready)
- *  - Spatial routing (Haversine + traffic, Azure Maps-ready)
- */
+// AeroHealth patient triage and operations workspace.
+import { useState, useRef, useEffect, useEffectEvent, lazy, Suspense } from "react";
 
-import { useState, useEffect, useRef } from "react";
-
-import LeafletMap from './components/LeafletMap';
-import HospitalDetails from './components/HospitalDetails';
-import HospitalComparison from './components/HospitalComparison';
+import { io } from 'socket.io-client';
 import hospitalsData from '../backend/data/hospitals.json';
 
 import { AppShell } from "./components/app-shell";
-import { Dashboard } from "./components/dashboard";
+const backendOrigin = import.meta.env.VITE_BACKEND_URL?.trim().replace(/\/+$/, "") || "";
+const apiUrl = (path) => `${backendOrigin}/api${path}`;
+
+const Dashboard = lazy(() => import("./components/dashboard").then(module => ({ default: module.Dashboard })));
+const LeafletMap = lazy(() => import("./components/LeafletMap"));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONFIG
@@ -28,38 +18,18 @@ const CFG = {
   WEIGHTS: { urgencyMatch:0.25, deptAvailability:0.20, occupancyInverse:0.20, predictedLoadInverse:0.15, travelTime:0.15, icuAvailability:0.05 },
   PEAK_HOURS: [8,9,10,17,18,19,20],
   MAX_TRAVEL_MIN: 60,
-  TICK_MS: 3000,
   URGENCY: {
     1:{label:"Non-Urgent",color:"#059669",bg:"#ecfdf5"},
     2:{label:"Low",color:"#65a30d",bg:"#f7fee7"},
     3:{label:"Moderate",color:"#d97706",bg:"#fffbeb"},
     4:{label:"High",color:"#e85d4a",bg:"#fff1f0"},
-    5:{label:"Critical",color:"#991b1b",bg:"#fff1f0"},
+    5:{label:"Critical",color:"#fca5a5",bg:"#fff1f0"},
   },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MOCK DATA
+// TRIAGE, ROUTING AND CAPACITY
 // ─────────────────────────────────────────────────────────────────────────────
-const mkHospitals = () => [
-  // avgLosHours: average patient length of stay (hours) — used by 6-variable capacity model (V4)
-  // deptBedRatio: fraction of specialist dept beds out of total — capacity pressure proxy (V5)
-  {id:"h1",name:"Fortis Cunningham Rd", area:"Langford Town",      coords:{lat:12.9550,lng:77.5855},depts:["Cardiology","Emergency","ICU","Neurology","General Medicine"],beds:380,occ:238,icuT:38,icuO:14,emgT:30,emgO:10,status:"accepting",avgLosHours:28,deptBedRatio:0.45},
-  {id:"h2",name:"Narayana Bommasandra", area:"Electronic City",    coords:{lat:12.8305,lng:77.6707},depts:["Cardiology","Cardiac Surgery","Emergency","ICU","Orthopedics"],beds:1000,occ:512,icuT:60,icuO:29,emgT:60,emgO:22,status:"accepting",avgLosHours:32,deptBedRatio:0.55},
-  {id:"h3",name:"Apollo Jayanagar",     area:"Jayanagar 4th Block",coords:{lat:12.9252,lng:77.5823},depts:["Neurology","Oncology","Emergency","ICU","General Medicine"],beds:350,occ:273,icuT:28,icuO:22,emgT:25,emgO:16,status:"moderate",avgLosHours:36,deptBedRatio:0.50},
-  {id:"h4",name:"Manipal Whitefield",   area:"Whitefield",         coords:{lat:12.9700,lng:77.7500},depts:["General Medicine","Orthopedics","Emergency","Pediatrics"],beds:440,occ:414,icuT:44,icuO:42,emgT:35,emgO:33,status:"saturated",avgLosHours:24,deptBedRatio:0.35},
-  {id:"h5",name:"Sakra Premium",        area:"Marathahalli",       coords:{lat:12.9561,lng:77.6966},depts:["Neurology","Cardiology","Emergency","ICU","Ophthalmology"],beds:300,occ:219,icuT:32,icuO:23,emgT:22,emgO:14,status:"moderate",avgLosHours:30,deptBedRatio:0.48},
-  {id:"h6",name:"Aster CMI Hebbal",     area:"Hebbal",             coords:{lat:13.0499,lng:77.5979},depts:["Spine Surgery","Neurology","Emergency","ICU","Urology"],beds:350,occ:140,icuT:35,icuO:10,emgT:25,emgO:7,status:"accepting",avgLosHours:22,deptBedRatio:0.42},
-];
-
-const INIT_FEED = [
-  {id:"BLR-0091",name:"Arjun M., 45",   desc:"Acute Cardiac Distress · Cardiac ICU required",     dest:"Fortis Cunningham Rd",eta:8, sev:"critical",time:"Now"},
-  {id:"BLR-0089",name:"Meera K., 32",   desc:"Traumatic Head Injury · Neurosurgery required",      dest:"Narayana Bommasandra",eta:14,sev:"critical",time:"2m ago"},
-  {id:"BLR-0088",name:"Ravi S., 60",    desc:"Respiratory Failure · General ICU needed",           dest:"Apollo Jayanagar",    eta:11,sev:"urgent",  time:"5m ago"},
-  {id:"BLR-0087",name:"Lakshmi R., 28", desc:"Obstetric Emergency · Labour & Delivery required",   dest:"Sakra Premium",       eta:9, sev:"urgent",  time:"8m ago"},
-  {id:"BLR-0086",name:"Deepak A., 40",  desc:"Fractured Tibia · Orthopedic department",            dest:"Fortis Cunningham Rd",eta:12,sev:"stable",  time:"12m ago"},
-];
-
 // ─────────────────────────────────────────────────────────────────────────────
 // SERVICES  (Azure integration points — swap function bodies only)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -198,7 +168,7 @@ const SpatialService = {
   route(from,to){
     const dist=this.haversine(from.lat,from.lng,to.lat,to.lng);
     const peak=CFG.PEAK_HOURS.includes(new Date().getHours());
-    const tm=peak?1.6+Math.random()*0.4:1.1+Math.random()*0.2;
+    const tm = peak ? 1.8 : 1.2;
     return {distKm:+dist.toFixed(1),mins:Math.round((dist/25)*60*tm)};
   },
 };
@@ -235,7 +205,6 @@ const PredictiveService = {
     const incomingAmbulanceCount = inboundCount;
 
     // V4 — Average Length of Stay (hours) — from hospital config
-    const avgLengthOfStayHours = avgLosHours;
 
     // V5 — Dept Bed Ratio — from hospital config
     const deptBedRatio = Math.min(1, Math.max(0, h.deptBedRatio || 0.40));
@@ -250,9 +219,8 @@ const PredictiveService = {
     const rawP60 = (curr + netChangePct) * timeOfDayLoadFactor * deptPressure;
     const p60 = Math.min(100, Math.max(0, Math.round(rawP60)));
     const trend = p60 > curr + 2 ? "up" : p60 < curr - 2 ? "down" : "stable";
-    const conf = +(0.82 + Math.random() * 0.12).toFixed(2);
 
-    return { curr, p60, trend, conf };
+    return { curr, p60, trend };
   },
 };
 
@@ -277,27 +245,6 @@ const ScoreEngine = {
 // ─────────────────────────────────────────────────────────────────────────────
 // STYLES
 // ─────────────────────────────────────────────────────────────────────────────
-const CSS = `
-  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
-  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-  html,body{height:100%;width:100%;font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:#09090b;color:#f4f4f5;overflow-x:hidden;}
-  #root{min-height:100vh;width:100%;}
-  vite-plugin-checker-error-overlay,#vite-error-overlay,[data-vite-dev-id]{display:none!important;}
-  :root{
-    --sw:220px;--r:12px;
-    --shsm:0 1px 3px rgba(0,0,0,.06);--shmd:0 4px 16px rgba(0,0,0,.08);--shlg:0 8px 32px rgba(0,0,0,.10);
-  }
-  button{cursor:pointer;font-family:inherit;}input,textarea{font-family:inherit;}
-  ::-webkit-scrollbar{width:5px;}::-webkit-scrollbar-thumb{background:#27272a;border-radius:99px;}
-  @keyframes fadeUp{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);}}
-  @keyframes slideIn{from{opacity:0;transform:translateX(-10px);}to{opacity:1;transform:translateX(0);}}
-  @keyframes scaleIn{from{opacity:0;transform:scale(.93);}to{opacity:1;transform:scale(1);}}
-  @keyframes spin{to{transform:rotate(360deg);}}
-  @keyframes pd{0%,100%{box-shadow:0 0 0 0 rgba(16, 185, 129,.5);}50%{box-shadow:0 0 0 5px rgba(16, 185, 129,0);}}
-  @keyframes blink{0%,100%{opacity:1;}50%{opacity:.4;}}
-  @keyframes toast{from{opacity:0;transform:translateX(60px);}to{opacity:1;transform:translateX(0);}}
-`;
-
 // ─────────────────────────────────────────────────────────────────────────────
 // TINY SHARED COMPONENTS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -322,7 +269,7 @@ const StatusBadge = ({status}) => {
     moderate:{c:"#f59e0b",l:"Moderate"},
     saturated:{c:"#ef4444",l:"Saturated"}
   };
-  const s=M[status]||M.accepting;
+  const s=M[status] || {c:"#a1a1aa",l:"Unknown"};
   return (
     <div className="inline-flex items-center gap-1.5 bg-zinc-800/40 border border-zinc-700/50 px-2.5 py-1 rounded-full">
       <div style={{width:6,height:6,borderRadius:"50%",background:s.c}}/>
@@ -331,325 +278,96 @@ const StatusBadge = ({status}) => {
   );
 };
 
-const Spark = ({data,color="var(--accent)"}) => {
-  const max=Math.max(...data,1);
-  return (
-    <div style={{display:"flex",alignItems:"flex-end",gap:2,height:60}}>
-      {data.map((v,i)=><div key={i} style={{flex:1,background:color,borderRadius:"3px 3px 0 0",opacity:i===data.length-3?1:0.55,height:`${(v/max)*56}px`,minHeight:4,transition:"height .4s"}}/>)}
-    </div>
-  );
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SVG MAP — patient routing with animated ambulance
-// ─────────────────────────────────────────────────────────────────────────────
-const RouteMap = ({hospitals,results,patCoords,bestId,step}) => {
-  const B={mnLa:12.82,mxLa:13.06,mnLn:77.47,mxLn:77.77};
-  const xy=(la,ln)=>({x:((ln-B.mnLn)/(B.mxLn-B.mnLn))*680+20,y:((B.mxLa-la)/(B.mxLa-B.mnLa))*280+20});
-  const pt=xy(patCoords.lat,patCoords.lng);
-  const bh=hospitals.find(h=>h.id===bestId);
-  const bp=bh?xy(bh.coords.lat,bh.coords.lng):null;
-  const t=Math.min(1,step/100);
-  const ax=bp?pt.x+(bp.x-pt.x)*t:pt.x;
-  const ay=bp?pt.y+(bp.y-pt.y)*t:pt.y;
-  const pLen=bp?Math.sqrt((bp.x-pt.x)**2+(bp.y-pt.y)**2):0;
-
-  // Basic collision avoidance for labels
-  const getLabelOffset = (h, allH, px, py) => {
-    let yOffset = -22;
-    // Check if close to patient marker (which is at pt)
-    if (Math.abs(px - pt.x) < 40 && Math.abs(py - pt.y) < 40) {
-       yOffset = 26; // push below if near patient
-    }
-    // Check if close to other hospitals
-    for(const other of allH) {
-      if (other.id !== h.id) {
-        const op = xy(other.coords.lat, other.coords.lng);
-        if (Math.abs(px - op.x) < 50 && Math.abs(py - op.y) < 20) {
-           // if we're to the right, push down, else push up
-           if (px > op.x) yOffset = 26;
-        }
-      }
-    }
-    return yOffset;
-  };
-
-  return (
-    <div className="bg-[#09090b] rounded-xl border border-zinc-800/50 overflow-hidden">
-      <div className="px-5 py-3 border-b border-zinc-800/50 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"/>
-          <span className="font-bold text-sm text-zinc-100">Live Route Map — Bengaluru</span>
-        </div>
-        
-      </div>
-      <div className="p-2 relative bg-[#18181b]">
-        <svg width="100%" viewBox="0 0 720 320" className="block">
-          <defs>
-            <pattern id="rg" width="28" height="28" patternUnits="userSpaceOnUse">
-              <path d="M28 0L0 0 0 28" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth=".7"/>
-            </pattern>
-          </defs>
-          <rect width="720" height="320" fill="url(#rg)"/>
-
-          {bp&&<line x1={pt.x} y1={pt.y} x2={bp.x} y2={bp.y} stroke="#3f3f46" strokeWidth="2.5" strokeDasharray="6 4"/>}
-          {bp&&<line x1={pt.x} y1={pt.y} x2={bp.x} y2={bp.y} stroke="#3b82f6" strokeWidth="2.5"
-            strokeDasharray={`${pLen} ${pLen}`} strokeDashoffset={pLen*(1-t)} style={{transition:"stroke-dashoffset .1s linear"}}/>}
-
-          {hospitals.map(h=>{
-            const p=xy(h.coords.lat,h.coords.lng);
-            const isBest=h.id===bestId;
-            const res=results.find(r=>r.h.id===h.id);
-            const oc=h.occ/h.beds;
-            const isNearCap = oc > 0.85;
-            const yOff = getLabelOffset(h, hospitals, p.x, p.y);
-            
-            return (
-              <g key={h.id}>
-                {isBest ? (
-                   <g>
-                     <circle cx={p.x} cy={p.y} r={16} fill="rgba(16,185,129,0.2)"/>
-                     <circle cx={p.x} cy={p.y} r={10} fill="#10b981" stroke="#09090b" strokeWidth="2"/>
-                     <path d={`M${p.x-3} ${p.y} L${p.x-1} ${p.y+2} L${p.x+3} ${p.y-3}`} fill="none" stroke="#09090b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                   </g>
-                ) : isNearCap ? (
-                   <circle cx={p.x} cy={p.y} r={6} fill="#ef4444" stroke="#09090b" strokeWidth="1.5"/>
-                ) : (
-                   <circle cx={p.x} cy={p.y} r={6} fill="#18181b" stroke="#71717a" strokeWidth="2"/>
-                )}
-                
-                <rect x={p.x-40} y={p.y+yOff-9} width={80} height={18} rx="4" fill="#18181b" stroke="#3f3f46" strokeWidth="1" opacity="0.9"/>
-                <text x={p.x} y={p.y+yOff} textAnchor="middle" fill={isBest?"#10b981":"#d4d4d8"} fontSize="8.5" fontWeight={isBest?"700":"600"}>
-                  {h.name.split(" ").slice(0,2).join(" ")}
-                </text>
-              </g>
-            );
-          })}
-
-          {bp&&t>0&&t<0.98&&(
-            <g transform={`translate(${ax},${ay})`}>
-              <rect x="-8" y="-8" width="16" height="16" rx="3" fill="#f4f4f5" stroke="#3b82f6" strokeWidth="2"/>
-              <text x="0" y="2" textAnchor="middle" dominantBaseline="middle" fill="#ef4444" fontSize="12" fontWeight="900">+</text>
-            </g>
-          )}
-
-          <g>
-            <circle cx={pt.x} cy={pt.y} r={14} fill="rgba(59,130,246,0.2)"/>
-            <circle cx={pt.x} cy={pt.y} r={6} fill="#3b82f6" stroke="#09090b" strokeWidth="2"/>
-            <rect x={pt.x-16} y={pt.y-24} width={32} height={14} rx="3" fill="#3b82f6"/>
-            <text x={pt.x} y={pt.y-14} textAnchor="middle" fill="#09090b" fontSize="8" fontWeight="800">YOU</text>
-          </g>
-
-          <g transform="translate(12,296)">
-             <circle cx="6" cy="6" r="4" fill="#10b981"/><text x="14" y="9" fontSize="9" fill="#a1a1aa">Best match</text>
-             <circle cx="86" cy="6" r="4" fill="#3b82f6"/><text x="94" y="9" fontSize="9" fill="#a1a1aa">Your location</text>
-             <circle cx="170" cy="6" r="4" fill="#ef4444"/><text x="178" y="9" fontSize="9" fill="#a1a1aa">Near capacity</text>
-             
-          </g>
-        </svg>
-      </div>
-    </div>
-  );
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ADMIN MAP (dashboard)
-// ─────────────────────────────────────────────────────────────────────────────
-const AdminMap = ({hospitals}) => {
-  const B={mnLa:12.82,mxLa:13.06,mnLn:77.47,mxLn:77.77};
-  return (
-    <div style={{background:"#09090b",borderRadius:10,height:260,position:"relative",overflow:"hidden",border:"1px solid rgba(39, 39, 42, 0.5)"}}>
-      <svg style={{position:"absolute",inset:0,width:"100%",height:"100%"}}>
-        <defs><pattern id="mg" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M30 0L0 0 0 30" fill="none" stroke="rgba(255,255,255,.04)" strokeWidth=".8"/></pattern></defs>
-        <rect width="100%" height="100%" fill="url(#mg)"/>
-        {hospitals.map(h=>{
-          const px=((h.coords.lng-B.mnLn)/(B.mxLn-B.mnLn))*100;
-          const py=((B.mxLa-h.coords.lat)/(B.mxLa-B.mnLa))*100;
-          const oc=h.occ/h.beds;
-          const dc=oc>.85?"#ef4444":oc>.65?"#f59e0b":"#10b981";
-          return (
-            <g key={h.id}>
-              <circle cx={`${px}%`} cy={`${py}%`} r="7" fill={dc} stroke="#09090b" strokeWidth="2.5"/>
-              <foreignObject x={`${Math.min(px+1.5,70)}%`} y={`${Math.max(py-8,2)}%`} width="110" height="30">
-                <div style={{background:"rgba(24,24,27,.92)",borderRadius:5,padding:"2px 7px",fontSize:8.5,fontWeight:700,border:"1px solid #3f3f46",whiteSpace:"nowrap",color:"#f4f4f5"}}>
-                  {h.name.split(" ").slice(0,2).join(" ")}
-                  <span style={{color:dc,marginLeft:4}}>{Math.round(oc*100)}%</span>
-                </div>
-              </foreignObject>
-            </g>
-          );
-        })}
-      </svg>
-      <div style={{position:"absolute",top:12,left:12,background:"rgba(24,24,27,.92)",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,border:"1px solid #3f3f46",color:"#d4d4d8"}}>Bengaluru Metro</div>
-      <div style={{position:"absolute",bottom:12,right:12,background:"rgba(24,24,27,.9)",borderRadius:8,padding:"7px 12px",fontSize:10,display:"flex",gap:12,border:"1px solid #3f3f46",color:"#a1a1aa"}}>
-        <span style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:6,height:6,borderRadius:"50%",background:"#10b981"}}/>Available</span>
-        <span style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:6,height:6,borderRadius:"50%",background:"#f59e0b"}}/>Moderate</span>
-        <span style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:6,height:6,borderRadius:"50%",background:"#ef4444"}}/>Critical</span>
-      </div>
-    </div>
-  );
-};
-
 // ─────────────────────────────────────────────────────────────────────────────
 // LANDING
 // ─────────────────────────────────────────────────────────────────────────────
+const PublicHeader = ({onHome, children}) => (
+  <header className="public-header">
+    <div className="public-wrap public-nav">
+      <button className="brand" type="button" onClick={onHome} aria-label="AeroHealth home">
+        <span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M2 12h5l3-7 4 14 3-7h5"/></svg></span>
+        AeroHealth
+      </button>
+      <nav aria-label="Main navigation">{children}</nav>
+    </div>
+  </header>
+);
+
+const EmergencyNote = () => <p className="safety-note"><strong>Simulation only.</strong> In a real emergency, call <a href="tel:112">112</a>.</p>;
+
 const Landing = ({ onAnalyse, onAdmin }) => {
-  const [symptoms,setSymptoms]=useState("");
-
+  const [symptoms, setSymptoms] = useState("");
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-
-      {/* NAVBAR */}
-      <nav style={{
-        height: 64,
-        padding: "0 48px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        background: "var(--card)",
-        borderBottom: "1px solid var(--border)"
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            background: "var(--accent)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontWeight: 700,
-            color: "#fff"
-          }}>
-            AH
+    <div className="public-page" id="top">
+      <PublicHeader onHome={() => window.scrollTo(0, 0)}>
+        <a className="nav-link" href="#how-it-works">How it works</a>
+        <button className="button-secondary" onClick={onAdmin}>Admin Login</button>
+      </PublicHeader>
+      <main>
+        <section className="public-wrap landing-hero">
+          <div>
+            <p className="eyebrow">Bengaluru care navigation</p>
+            <h1>Find a hospital<br/>that fits your needs.</h1>
+            <p className="hero-description">Explore nearby hospitals by specialty, reported bed occupancy, and estimated travel time.</p>
+            <form className="symptom-form" onSubmit={event => { event.preventDefault(); onAnalyse(symptoms); }}>
+              <label htmlFor="landing-symptoms">Describe your symptoms <span>Optional</span></label>
+              <textarea id="landing-symptoms" value={symptoms} onChange={event => setSymptoms(event.target.value)} rows={3} placeholder="For example, fever and a persistent cough since yesterday"/>
+              <button className="button-primary" type="submit">Start hospital search <span aria-hidden="true">→</span></button>
+            </form>
+            <EmergencyNote/>
           </div>
-          <span style={{ fontWeight: 800, fontSize: 20 }}>
-            Aero<span style={{ color: "var(--accent2)" }}>Health</span>
-          </span>
-        </div>
-
-        <button
-          onClick={onAdmin}
-          style={{
-            padding: "8px 20px",
-            borderRadius: 8,
-            border: "1.5px solid var(--border)",
-            background: "transparent",
-            fontWeight: 600,
-            fontSize: 14,
-            color: "var(--muted)"
-          }}
-        >
-          Admin Login
-        </button>
-      </nav>
-
-      {/* HERO */}
-      <div style={{
-        flex: 1,
-        padding: "100px 24px",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        textAlign: "center"
-      }}>
-        <div style={{ maxWidth: 760 }}>
-
-          <h1 style={{
-            fontWeight: 700,
-            fontSize: "clamp(34px,5vw,56px)",
-            marginBottom: 20,
-            lineHeight: 1.15
-          }}>
-            Intelligent Healthcare Routing
-          </h1>
-
-          <p style={{
-            fontSize: 17,
-            color: "var(--muted)",
-            marginBottom: 40,
-            lineHeight: 1.7
-          }}>
-            Describe your symptoms and our AI engine will instantly
-            determine the optimal hospital based on urgency,
-            real-time capacity and travel time.
-          </p>
-
-          <textarea
-            value={symptoms}
-            onChange={(e)=>setSymptoms(e.target.value)}
-            placeholder="Describe your symptoms..."
-            rows={4}
-            style={{
-              width: "100%",
-              padding: "14px 16px",
-              borderRadius: 10,
-              border: "1.5px solid var(--border)",
-              fontSize: 15,
-              background: "#fff",
-              marginBottom: 20
-            }}
-          />
-
-          <button
-            onClick={()=>onAnalyse(symptoms)}
-            style={{
-              padding: "14px 40px",
-              borderRadius: 10,
-              border: "none",
-              background: "var(--accent)",
-              color: "#fff",
-              fontWeight: 700,
-              fontSize: 15,
-              boxShadow: "0 6px 22px rgba(29,111,229,.25)"
-            }}
-          >
-            Analyse & Find Best Hospital
-          </button>
-
-          <p style={{
-            marginTop: 14,
-            fontSize: 12,
-            color: "var(--muted)"
-          }}>
-            For real emergencies call 112 immediately.
-          </p>
-
-        </div>
-      </div>
+          <figure className="network-figure">
+            <div className="network-heading"><span className="eyebrow">Facility directory</span><span>Bengaluru, IN</span></div>
+            <svg viewBox="0 0 400 300" role="img" aria-label="Relative locations of hospitals in the Bengaluru directory">
+              <defs><pattern id="facility-grid" width="25" height="25" patternUnits="userSpaceOnUse"><path d="M25 0H0V25" fill="none" stroke="#29292d" strokeWidth="1"/></pattern></defs>
+              <rect width="400" height="300" fill="url(#facility-grid)"/>
+              <ellipse cx="195" cy="145" rx="95" ry="81" fill="none" stroke="#45472d" strokeDasharray="4 6"/>
+              <ellipse cx="195" cy="145" rx="149" ry="123" fill="none" stroke="#36372b"/>
+              {hospitalsData.map(hospital => <circle key={hospital.id} cx={32 + (hospital.coords.lng - 77.45) * 980} cy={275 - (hospital.coords.lat - 12.79) * 810} r="4" fill="var(--bento-accent)" stroke="#252719" strokeWidth="2"/>)}
+              <text x="195" y="175" textAnchor="middle" fill="#b5b5bd" fontSize="11" letterSpacing="2">BENGALURU</text>
+            </svg>
+            <figcaption><span><i aria-hidden="true"/> Directory location</span><strong>{hospitalsData.length} listed facilities</strong></figcaption>
+          </figure>
+        </section>
+        <section id="how-it-works" className="public-wrap workflow">
+          <div><p className="eyebrow">Patient workflow</p><h2>How hospital search works</h2></div>
+          <ol>{[
+            ["Describe symptoms", "Enter what you’re experiencing and how long it’s been happening."],
+            ["Review the assessment", "See the estimated urgency and the specialty suggested by the triage model."],
+            ["Compare facilities", "Review occupancy, travel estimates, and the route for each ranked hospital."],
+          ].map(([title, description], index) => <li key={title}><span>0{index + 1}</span><h3>{title}</h3><p>{description}</p></li>)}</ol>
+        </section>
+      </main>
+      <footer className="public-wrap public-footer"><strong>AeroHealth</strong><span>Bengaluru hospital routing simulator</span><a href="#top">Back to top ↑</a></footer>
     </div>
   );
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ADMIN LOGIN
-// ─────────────────────────────────────────────────────────────────────────────
 const AdminLogin = ({onSuccess,onBack}) => {
-  const [u,setU]=useState("");const [p,setP]=useState("");const [err,setErr]=useState("");const [loading,setL]=useState(false);
-  const submit=async()=>{setL(true);setErr("");await new Promise(r=>setTimeout(r,700));if(u==="admin"&&p==="admin")onSuccess();else setErr("Use admin / admin for this prototype.");setL(false);};
+  const [error, setError] = useState("");
+  function submit(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    if (form.get("username") === "admin" && form.get("password") === "admin") onSuccess();
+    else setError("Use the demo username and password shown below.");
+  }
+
   return (
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#09090b"}}>
-      <div style={{background:"#09090b",borderRadius:16,padding:"44px 38px",maxWidth:400,width:"100%",boxShadow:"none",animation:"scaleIn .4s ease"}}>
-        <div style={{textAlign:"center",marginBottom:30}}>
-          <div style={{width:52,height:52,borderRadius:12,background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,margin:"0 auto 14px"}}></div>
-          <h2 style={{fontWeight:800,fontSize:22,marginBottom:4}}>Admin Access</h2>
-          <p style={{color:"#a1a1aa",fontSize:13}}>AeroHealth Command Center</p>
-        </div>
-        {[["Username","text",u,setU,"admin"],["Password","password",p,setP,"••••••"]].map(([lbl,type,val,set,ph])=>(
-          <div key={lbl} style={{marginBottom:16}}>
-            <label style={{display:"block",fontWeight:700,fontSize:12,marginBottom:6,color:"#a1a1aa",textTransform:"uppercase",letterSpacing:.5}}>{lbl}</label>
-            <input type={type} value={val} onChange={e=>set(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} placeholder={ph}
-              style={{width:"100%",padding:"11px 14px",border:"1.5px solid var(--border)",borderRadius:8,fontSize:14,outline:"none",background:"#18181b",transition:"border-color .2s"}}
-              onFocus={e=>e.target.style.borderColor="var(--accent)"} onBlur={e=>e.target.style.borderColor="var(--border)"}/>
-          </div>
-        ))}
-        {err&&<div style={{color:"#ef4444",fontSize:12.5,marginBottom:14,padding:"10px 12px",background:"rgba(239, 68, 68, 0.1)",borderRadius:8}}>{err}</div>}
-        <button onClick={submit} disabled={loading} style={{width:"100%",padding:"13px",borderRadius:8,border:"none",background:loading?"var(--border)":"var(--accent)",color:loading?"var(--muted)":"#fff",fontWeight:700,fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:12}}>
-          {loading&&<Spinner size={16} color="#fff"/>}{loading?"Authenticating...":"Login to Dashboard"}
-        </button>
-        <button onClick={onBack} style={{width:"100%",padding:"11px",borderRadius:8,border:"1.5px solid var(--border)",background:"transparent",fontSize:13,color:"#a1a1aa"}}>← Back to Home</button>
-      </div>
+    <div className="public-page">
+      <PublicHeader onHome={onBack}><button className="button-secondary" onClick={onBack}>← Home</button></PublicHeader>
+      <main className="public-wrap patient-layout">
+        <div><p className="eyebrow">Operations workspace</p><h1>Command Center</h1><p className="hero-description">Review facility capacity, triage activity, and service health.</p></div>
+        <form className="bento-panel symptom-form" onSubmit={submit}>
+          <h2 className="font-semibold">Admin access</h2>
+          <p className="route-area">Demo access. Enter <strong>admin</strong> in both fields.</p>
+          <label htmlFor="admin-user">Username</label>
+          <input id="admin-user" name="username" autoComplete="username" required/>
+          <label htmlFor="admin-password">Password</label>
+          <input id="admin-password" name="password" type="password" autoComplete="current-password" required/>
+          {error && <p role="alert" className="safety-note">{error}</p>}
+          <button className="button-primary">Login to Dashboard</button>
+        </form>
+      </main>
     </div>
   );
 };
@@ -659,38 +377,50 @@ const AdminLogin = ({onSuccess,onBack}) => {
 // ─────────────────────────────────────────────────────────────────────────────
 const PatientFlow = ({ initialSymptoms, onBack }) => {
   const [step,setStep]=useState("input");
+  useEffect(() => { if (step !== "analyzing") window.scrollTo(0, 0); }, [step]);
   const [sx,setSx]=useState(initialSymptoms || "");
   const [coords,setCoords]=useState({lat:12.9716,lng:77.5946});
   const [locName,setLoc]=useState("Central Bengaluru (default)");
   const [triage,setTriage]=useState(null);
+  const [snapshot,setSnapshot]=useState(false);
   const [ranked,setRanked]=useState([]);
-  const [hospitals]=useState(mkHospitals);
   const [toasts,setToasts]=useState([]);
-  const [routeStep,setRouteStep]=useState(0);
+  const toastTimer = useRef(null);
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
   const [selId,setSelId]=useState(null);
-  const [liveH,setLiveH]=useState(mkHospitals());
-  const tiRef=useRef(null);
 
-  useEffect(()=>{
-  if(initialSymptoms && initialSymptoms.length > 10){
-    analyse();
-  }
-},[]);
+  const toast=(msg,type="info")=>{clearTimeout(toastTimer.current);setToasts([{id:Date.now(),msg,type}]);toastTimer.current=setTimeout(()=>setToasts([]),4500);};
 
-  const toast=(msg,type="info")=>{const id=Date.now();setToasts(t=>[...t,{id,msg,type}]);setTimeout(()=>setToasts([]),3500);};
-
-  const gps=()=>{if(!navigator.geolocation){toast("Using default location","warn");return;}navigator.geolocation.getCurrentPosition(pos=>{setCoords({lat:pos.coords.latitude,lng:pos.coords.longitude});setLoc(`${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`);toast(" Location acquired!");},()=>toast("Could not get GPS. Using default.","warn"));};
+  const [locating, setLocating] = useState(false);
+  const gps = () => {
+    if (!navigator.geolocation) { toast("Location is unavailable. Using the current search location.", "warn"); return; }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(({coords}) => {
+      setCoords({lat:coords.latitude, lng:coords.longitude});
+      setLoc(`${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`);
+      setLocating(false);
+    }, () => {
+      setLocating(false);
+      toast("Could not get GPS. The search location is unchanged.", "warn");
+    }, {timeout: 8000});
+  };
 
   const analyse=async()=>{
     if(sx.trim().length<10){toast("Please describe symptoms in more detail.","error");return;}
     setStep("analyzing");
-    await new Promise(r=>setTimeout(r,800));
 
+    const facilitiesRequest = fetch(apiUrl("/hospitals"), { signal: AbortSignal.timeout(4000) })
+      .then(async response => {
+        if (!response.ok) throw new Error("Hospital data unavailable");
+        const facilities = await response.json();
+        return { facilities, snapshot: false };
+      })
+      .catch(() => ({ facilities: hospitalsData, snapshot: true }));
     let tr = null;
     // --- Attempt Azure AI backend classification first ---
     // Falls back to local classifier automatically if backend is unavailable.
     try {
-      const resp = await fetch("/api/classify", {
+      const resp = await fetch(apiUrl("/classify"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: sx }),
@@ -707,180 +437,108 @@ const PatientFlow = ({ initialSymptoms, onBack }) => {
           confidence: azureResult.confidence,
         };
       }
-    } catch (_) {
+    } catch {
       // Network error or timeout — silent fallback
     }
 
     // --- Local keyword classifier fallback ---
     if (!tr) {
       const local = TriageService.classify(sx);
-      tr = { ...local, source: "fallback", confidence: 1.0 };
+      tr = { ...local, source: "fallback", confidence: null };
     }
 
-    await new Promise(r=>setTimeout(r,800));
-    const rk=ScoreEngine.rank(hospitals,tr,coords);
+    const { facilities, snapshot } = await facilitiesRequest;
+    if (!facilities.length) {
+      setStep("input");
+      toast("No hospitals are available in the directory.", "error");
+      return;
+    }
+    setSnapshot(snapshot);
+    const rk=ScoreEngine.rank(facilities,tr,coords);
     setTriage(tr);
     setRanked(rk);
     setSelId(rk[0]?.h.id||null);
     setStep("results");
-    toast(`✅ Optimal route found! (${tr.source === "azure" ? " Azure AI" : "📋 Rule-based"})`);
   };
 
-  useEffect(()=>{if(step!=="results")return;setRouteStep(0);clearInterval(tiRef.current);tiRef.current=setInterval(()=>setRouteStep(s=>{if(s>=100){clearInterval(tiRef.current);return 100;}return s+0.5;}),50);return()=>clearInterval(tiRef.current);},[step,selId]);
-
-  useEffect(()=>{if(step!=="results")return;const iv=setInterval(()=>setLiveH(prev=>prev.map(h=>({...h,occ:Math.min(h.beds,Math.max(Math.round(h.beds*.25),h.occ+Math.round((Math.random()-.48)*3)))}))),CFG.TICK_MS);return()=>clearInterval(iv);},[step]);
+  const analyseInitialSymptoms = useEffectEvent(() => { void analyse(); });
+  useEffect(() => {
+    if (initialSymptoms.trim().length < 10) return;
+    const timer = setTimeout(() => analyseInitialSymptoms(), 0);
+    return () => clearTimeout(timer);
+  }, [initialSymptoms]);
 
   const SAMPLES=["Severe chest pain radiating to my left arm with shortness of breath and sweating","Sudden severe headache, confused speech and facial drooping on one side","High fever, difficulty breathing and persistent cough for 3 days","Mild fever and body ache since yesterday, feeling very fatigued"];
 
-  if(step==="input")return(
-    <div className="min-h-screen bg-[#09090b]">
-      <Toast items={toasts}/>
-      <nav style={{height:58,padding:"0 24px",display:"flex",alignItems:"center",gap:14,background:"#09090b",borderBottom:"1px solid var(--border)"}}>
-        <button onClick={onBack} style={{background:"none",border:"none",color:"#a1a1aa",fontSize:13,fontWeight:600}}>← Home</button>
-        <span style={{fontWeight:800,fontSize:18,color:"var(--sidebar)"}}>Aero<span style={{color:"#10b981"}}>Health</span></span>
-        <span style={{color:"#a1a1aa",fontSize:13}}>/ Patient Triage</span>
-      </nav>
-      <div style={{maxWidth:660,margin:"0 auto",padding:"40px 24px",animation:"fadeUp .5s ease"}}>
-        <h1 style={{fontWeight:800,fontSize:30,marginBottom:8}}>What are your <span style={{color:"#10b981"}}>symptoms?</span></h1>
-        <p style={{color:"#a1a1aa",fontSize:15,marginBottom:28}}>Describe what you're experiencing and we'll find the best hospital right now.</p>
-        <div style={{background:"#09090b",borderRadius:12,padding:24,boxShadow:"none",marginBottom:18}}>
-          <label style={{display:"block",fontWeight:700,fontSize:11,marginBottom:10,color:"#a1a1aa",textTransform:"uppercase",letterSpacing:.5}}>Describe Your Symptoms</label>
-          <textarea value={sx} onChange={e=>setSx(e.target.value)} rows={5} placeholder="e.g. Severe chest pain radiating to my left arm, difficulty breathing, feel dizzy..."
-            style={{width:"100%",padding:"12px 14px",border:"1.5px solid var(--border)",borderRadius:8,fontSize:14,resize:"vertical",lineHeight:1.6,outline:"none",background:"#18181b"}}
-            onFocus={e=>e.target.style.borderColor="var(--accent)"} onBlur={e=>e.target.style.borderColor="var(--border)"}/>
-          <div style={{marginTop:14}}>
-            <div style={{fontSize:10.5,color:"#a1a1aa",fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:.5}}>Quick Select:</div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
-              {SAMPLES.map((s,i)=><button key={i} onClick={()=>setSx(s)} style={{padding:"6px 13px",border:`1px solid ${sx===s?"var(--accent)":"var(--border)"}`,borderRadius:20,background:sx===s?"#eff6ff":"#f8fafc",color:sx===s?"var(--accent)":"var(--muted)",fontSize:11.5,fontWeight:600,transition:"all .15s"}}>{s.substring(0,42)}...</button>)}
-            </div>
+  if (step !== "results") return (
+    <div className="public-page">
+      <PublicHeader onHome={onBack}><button className="button-secondary" onClick={onBack}>← Home</button></PublicHeader>
+      <main className="public-wrap patient-layout">
+        <aside>
+          <p className="eyebrow">01 / Patient assessment</p>
+          <h1>Tell us how you feel.</h1>
+          <p className="hero-description">Describe your symptoms to compare hospitals in the Bengaluru directory.</p>
+          <EmergencyNote/>
+        </aside>
+        <form className="bento-panel symptom-form" onSubmit={event => { event.preventDefault(); void analyse(); }} aria-busy={step === "analyzing"}>
+          <Toast items={toasts}/>
+          <label htmlFor="patient-symptoms">Describe your symptoms</label>
+          <textarea id="patient-symptoms" value={sx} onChange={event => setSx(event.target.value)} rows={5} placeholder="Include what you feel and when it began." disabled={step === "analyzing"}/>
+          <p className="field-caption">Try an example</p>
+          <div className="sample-list">{SAMPLES.map((sample, index) => <button type="button" key={sample} aria-pressed={sx === sample} disabled={step === "analyzing"} onClick={() => setSx(sample)}>{["Chest discomfort", "Sudden headache", "Fever and cough", "Mild fever"][index]}</button>)}</div>
+          <div className="location-row">
+            <div><span className="field-caption">Search location</span><strong>{locName}</strong></div>
+            <button type="button" className="button-secondary" disabled={step === "analyzing" || locating} onClick={gps}>{locating ? "Locating…" : "Use GPS"}</button>
           </div>
-        </div>
-        <div style={{background:"#09090b",borderRadius:12,padding:"16px 20px",boxShadow:"none",marginBottom:22,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <div><div style={{fontWeight:700,fontSize:11,color:"#a1a1aa",textTransform:"uppercase",letterSpacing:.5,marginBottom:3}}>Your Location</div><div style={{fontSize:14,fontWeight:600}}> {locName}</div></div>
-          <button onClick={gps} style={{padding:"9px 18px",border:"1.5px solid var(--border)",borderRadius:8,background:"transparent",color:"#3b82f6",fontSize:13,fontWeight:700}}> Use GPS</button>
-        </div>
-        <button onClick={analyse} style={{width:"100%",padding:"16px",borderRadius:10,border:"none",background:"var(--accent)",color:"#fff",fontWeight:800,fontSize:17,boxShadow:"0 4px 18px rgba(29,111,229,.35)",transition:"transform .2s"}} onMouseOver={e=>e.target.style.transform="translateY(-2px)"} onMouseOut={e=>e.target.style.transform=""}> Analyse &amp; Find Best Hospital</button>
-        <p style={{textAlign:"center",marginTop:14,fontSize:11.5,color:"#a1a1aa"}}> Simulation. For real emergencies call 112.</p>
-      </div>
+          <button className="button-primary" disabled={step === "analyzing" || locating}>{step === "analyzing" ? <><Spinner size={16} color="currentColor"/> Analysing symptoms…</> : <>Analyse &amp; find hospitals <span aria-hidden="true">→</span></>}</button>
+        </form>
+      </main>
     </div>
   );
 
-  if(step==="analyzing")return(
-    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#09090b",gap:20,animation:"fadeUp .4s ease"}}>
-      <Spinner size={52} color="var(--accent)"/>
-      <h2 style={{fontWeight:800,fontSize:24,marginBottom:6}}>Analysing your case...</h2>
-      <div style={{color:"#a1a1aa",fontSize:14,lineHeight:2,textAlign:"center"}}>
-         Running semantic triage<br/> Evaluating hospital capacities<br/> Calculating traffic-aware routes<br/> Computing health scores
-      </div>
-    </div>
-  );
-
-  // RESULTS
-  const selR=ranked.find(r=>r.h.id===selId)||ranked[0];
-  const best=ranked[0];
-  const U=CFG.URGENCY[triage.urgency]||CFG.URGENCY[1];
-
-  return(
-    <div className="min-h-screen bg-[#09090b]">
-      <Toast items={toasts}/>
-      <nav style={{height:58,padding:"0 24px",display:"flex",alignItems:"center",gap:14,background:"#09090b",borderBottom:"1px solid var(--border)",position:"sticky",top:0,zIndex:100}}>
-        <button onClick={()=>setStep("input")} style={{background:"none",border:"none",color:"#a1a1aa",fontSize:13,fontWeight:600}}>← Back</button>
-        <span style={{fontWeight:800,fontSize:18,color:"var(--sidebar)"}}>Aero<span style={{color:"#10b981"}}>Health</span></span>
-        <span style={{color:"#a1a1aa",fontSize:13}}>/ Results</span>
-      </nav>
-      <div style={{maxWidth:960,margin:"0 auto",padding:"26px 20px"}}>
-
-        {/* Triage summary */}
-        <div style={{background:"#09090b",borderRadius:12,padding:22,boxShadow:"none",marginBottom:20,border:"1px solid rgba(39, 39, 42, 0.5)",animation:"fadeUp .4s ease"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}}>
-            <h2 style={{fontWeight:800,fontSize:19,margin:0}}>Triage Assessment</h2>
-            {/* Source badge — shows whether Azure AI or rule-based classifier was used */}
-            <span className={`inline-flex items-center px-3 py-1 text-[10.5px] font-bold rounded-full border ${triage.source==="azure" ? "bg-blue-500/10 text-blue-400 border-blue-500/20" : "bg-zinc-800/50 text-zinc-400 border-zinc-700/50"}`}>
-              {triage.source==="azure" ? "Azure AI Language" : "Rule-based classifier"}
-            </span>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12}}>
-            {[
-              {l:"Urgency Level",v:<span style={{color:U.color}} className="bg-zinc-800/40 border border-zinc-700/50 px-3 py-1.5 rounded-full font-bold text-xs">{U.label}</span>},
-              {l:"Department",v:<span style={{fontWeight:800,fontSize:16,color:"#3b82f6"}}>{triage.dept}</span>},
-              {l:"Priority Score",v:<span style={{fontWeight:800,fontSize:26,color:triage.priority>60?"var(--warn)":"var(--amber)"}}>{triage.priority}<span style={{fontSize:12,fontWeight:400}}>/100</span></span>},
-              {l:"Best Time-to-Care",v:<span style={{fontWeight:800,fontSize:26,color:"#10b981"}}>{best?.timeToCare}m</span>},
-            ].map((x,i)=>(
-              <div key={i} style={{background:"#18181b",borderRadius:8,padding:"13px 15px"}}>
-                <div style={{fontSize:10.5,color:"#a1a1aa",fontWeight:700,textTransform:"uppercase",letterSpacing:.5,marginBottom:7}}>{x.l}</div>
-                <div>{x.v}</div>
-              </div>
-            ))}
-          </div>
+  const selected = ranked.find(result => result.h.id === selId) ?? ranked[0];
+  const urgency = CFG.URGENCY[triage.urgency] ?? CFG.URGENCY[1];
+  return (
+    <div className="public-page">
+      <PublicHeader onHome={onBack}><button className="button-secondary" onClick={() => setStep("input")}>← Edit symptoms</button></PublicHeader>
+      <main className="public-wrap results-layout">
+        <div className="results-heading"><p className="eyebrow">02 / Hospital comparison</p><h1>Compare your options.</h1><EmergencyNote/></div>
+        {snapshot && <p role="status" className="safety-note">Hospital service unavailable. Results use the bundled directory snapshot.</p>}
+        <dl className="assessment-strip">
+          <div><dt>Estimated urgency</dt><dd style={{color:urgency.color}}>{urgency.label}</dd></div>
+          <div><dt>Suggested specialty</dt><dd>{triage.dept}</dd></div>
+          <div><dt>Triage priority</dt><dd>{triage.priority}/100</dd></div>
+          <div><dt>Assessment source</dt><dd>{triage.source === "azure" ? "Azure AI Language" : "Rule-based classifier"}</dd></div>
+        </dl>
+        <div className="comparison-layout">
+          <section className="bento-panel route-panel" aria-labelledby="selected-facility">
+            <p className="eyebrow">{selected.h.id === ranked[0].h.id ? "Top model match" : "Selected facility"}</p>
+            <h2 id="selected-facility">{selected.h.name}</h2>
+            <p className="route-area">{selected.h.area}</p>
+            <dl className="route-metrics">
+              <div><dt>Travel estimate</dt><dd>{selected.rt.mins} min</dd></div>
+              <div><dt>Estimated time to care</dt><dd>{selected.timeToCare} min</dd></div>
+              <div><dt>Ward occupancy</dt><dd>{Math.round(selected.h.occ / selected.h.beds * 100)}%</dd></div>
+              <div><dt>60 min forecast</dt><dd>{selected.pred.p60}%</dd></div>
+            </dl>
+            <Suspense fallback={<p className="map-placeholder" role="status">Loading route map…</p>}><LeafletMap hospitals={ranked.map(result => result.h)} userCoords={coords} selectedHospitalId={selId}/></Suspense>
+            <a className="button-secondary route-directions" href={`https://www.google.com/maps/dir/?api=1&destination=${selected.h.coords.lat},${selected.h.coords.lng}`} target="_blank" rel="noreferrer">Get directions ↗</a>
+          </section>
+          <section className="bento-panel facility-panel" aria-labelledby="ranked-facilities">
+            <h2 id="ranked-facilities">All hospitals ranked</h2>
+            <p className="route-area">Select a facility to update the route.</p>
+            <ol className="facility-list">{ranked.map(({h, rt, score, timeToCare}, index) => (
+              <li key={h.id}>
+                <button className="rank-select facility-choice" aria-pressed={h.id === selId} onClick={() => setSelId(h.id)}>
+                  <span className="facility-rank">{String(index + 1).padStart(2, "0")}</span>
+                  <span><strong>{h.name}</strong><small>{h.area} · {h.status}</small><small>{rt.mins} min travel · {timeToCare} min to care · {Math.round(h.occ / h.beds * 100)}% occupied</small></span>
+                  <span className="facility-score">{score}<small>Match</small></span>
+                </button>
+              </li>
+            ))}</ol>
+          </section>
         </div>
-
-        {/* Selected hospital + map */}
-        {selR&&(
-          <div style={{background:selR.h.id===best?.h.id?"linear-gradient(135deg,#eff6ff,#f0fdf4)":"var(--card)",border:`${selR.h.id===best?.h.id?2:1}px solid ${selR.h.id===best?.h.id?"var(--accent)":"var(--border)"}`,borderRadius:12,padding:22,marginBottom:20,boxShadow:"var(--shmd)",animation:"scaleIn .3s ease",position:"relative"}}>
-            {selR.h.id===best?.h.id&&<div style={{position:"absolute",top:14,right:14,background:"var(--accent)",color:"#fff",fontSize:10.5,fontWeight:700,padding:"4px 12px",borderRadius:20}}> RECOMMENDED</div>}
-            <div style={{display:"flex",gap:14,marginBottom:18,flexWrap:"wrap",alignItems:"flex-start"}}>
-              <div style={{flex:1,minWidth:180}}>
-                <div style={{fontWeight:800,fontSize:19,marginBottom:3}}>{selR.h.name}</div>
-                <div style={{color:"#a1a1aa",fontSize:13}}> {selR.h.area}</div>
-              </div>
-              <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-                {[{l:"Health Score",v:`${selR.score}`,c:selR.score>70?"var(--accent2)":selR.score>50?"var(--amber)":"var(--warn)",big:true},{l:"Travel Time",v:`${selR.rt.mins}m`},{l:"Time-to-Care",v:`${selR.timeToCare}m`,c:"var(--accent)"}].map((s,i)=>(
-                  <div key={i} className="bg-zinc-800/40 border border-zinc-700/50 rounded-lg p-3 text-center min-w-[90px]">
-                    <div style={{fontSize:10,color:"#a1a1aa",fontWeight:700,textTransform:"uppercase",marginBottom:4}}>{s.l}</div>
-                    <div style={{fontWeight:800,fontSize:s.big?26:18,color:s.c||"var(--text)"}}>{s.v}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <LeafletMap hospitals={hospitals} userCoords={coords} selectedHospitalId={selId} />
-            <div style={{marginTop:14,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-              <div className="bg-zinc-800/40 border border-zinc-700/50 rounded-lg p-3">
-                <div style={{fontSize:10.5,color:"#a1a1aa",fontWeight:700,textTransform:"uppercase",marginBottom:5}}>Occupancy Now (Live)</div>
-                <div style={{fontWeight:800,fontSize:22,marginBottom:6}}>{Math.round((liveH.find(h=>h.id===selR.h.id)?.occ/selR.h.beds)*100)||0}%</div>
-                <Bar v={Math.round((liveH.find(h=>h.id===selR.h.id)?.occ/selR.h.beds)*100)||0}/>
-              </div>
-              <div className="bg-zinc-800/40 border border-zinc-700/50 rounded-lg p-3">
-                <div style={{fontSize:10.5,color:"#a1a1aa",fontWeight:700,textTransform:"uppercase",marginBottom:5}}>Predicted (60 min)</div>
-                <div style={{fontWeight:800,fontSize:22,marginBottom:6}}>{selR.pred.p60}% {selR.pred.trend==="up"?"":""}</div>
-                <Bar v={selR.pred.p60}/>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Rankings */}
-        <h2 style={{fontWeight:800,fontSize:19,marginBottom:14}}> All Hospitals Ranked</h2>
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {ranked.map(({h,rt,score,timeToCare},i)=>{
-            const occ=Math.round((liveH.find(x=>x.id===h.id)?.occ/h.beds)*100)||0;
-            const isSel=h.id===selId;
-            return(
-              <div key={h.id} onClick={()=>{setSelId(h.id);setRouteStep(0);}} style={{background:isSel?"#eff6ff":"var(--card)",border:`${isSel?2:1}px solid ${isSel?"var(--accent)":"var(--border)"}`,borderRadius:12,padding:"14px 18px",cursor:"pointer",transition:"all .2s",animation:`fadeUp .4s ease ${i*.06}s both`,boxShadow:isSel?"var(--shmd)":"var(--shsm)"}}>
-                <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-                  <div style={{width:34,height:34,borderRadius:8,background:i===0?"var(--accent)":"#f0f4f8",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:i===0?15:13,color:i===0?"#fff":"var(--muted)",flexShrink:0}}>{i===0?"":`#${i+1}`}</div>
-                  <div style={{flex:1,minWidth:150}}>
-                    <div style={{fontWeight:700,fontSize:14}}>{h.name}</div>
-                    <div style={{color:"#a1a1aa",fontSize:12}}> {h.area}</div>
-                  </div>
-                  <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
-                    {[{l:"Score",v:score,c:score>70?"var(--accent2)":score>50?"var(--amber)":"var(--warn)"},{l:"Travel",v:`${rt.mins}m`},{l:"Occupancy",v:`${occ}%`,c:occ>85?"var(--warn)":occ>65?"var(--amber)":"var(--accent2)"},{l:"Time-to-Care",v:`${timeToCare}m`,c:"var(--accent)"}].map((s,j)=>(
-                      <div key={j} style={{textAlign:"center"}}>
-                        <div style={{fontSize:9.5,color:"#a1a1aa",fontWeight:700,textTransform:"uppercase"}}>{s.l}</div>
-                        <div style={{fontWeight:800,fontSize:j===0?20:15,color:s.c||"var(--text)"}}>{s.v}</div>
-                      </div>
-                    ))}
-                    <StatusBadge status={h.status}/>
-                  </div>
-                </div>
-                {isSel&&<div style={{marginTop:8,fontSize:11.5,color:"#3b82f6",fontWeight:600}}>↑ Route displayed above — click another hospital to compare</div>}
-              </div>
-            );
-          })}
-        </div>
-        <div style={{textAlign:"center",marginTop:28,padding:"13px 20px",background:"rgba(245, 158, 11, 0.1)",border:"1px solid #fde68a",borderRadius:10,fontSize:12.5,color:"#92400e"}}>
-           Simulation only. In real emergencies always call 112 immediately.
-        </div>
-      </div>
+      </main>
     </div>
   );
 };
@@ -889,33 +547,40 @@ const PatientFlow = ({ initialSymptoms, onBack }) => {
 // ADMIN DASHBOARD
 // ─────────────────────────────────────────────────────────────────────────────
 const Admin = ({onLogout}) => {
-  const [hosps,setHosps]=useState(mkHospitals());
-  const [nav,setNav]=useState("dashboard");
-  const [alert,setAlert]=useState(true);
-  const [feed,setFeed]=useState(INIT_FEED);
-  const [now,setNow]=useState(new Date());
-  const spark=useRef([55,58,60,57,62,68,74,78,82,80,75,80]);
+  const [hosps, setHosps] = useState(hospitalsData);
+  const [nav, setNav] = useState("dashboard");
+  const [feed, setFeed] = useState([]);
+  const [now, setNow] = useState(null);
+  const [connected, setConnected] = useState(false);
+  const [occupancyHistory, setOccupancyHistory] = useState([]);
+  const [queueReceived, setQueueReceived] = useState(false);
 
-  useEffect(()=>{
-    const iv=setInterval(()=>{
-      setHosps(prev=>prev.map(h=>({...h,occ:Math.min(h.beds,Math.max(Math.round(h.beds*.25),h.occ+Math.round((Math.random()-.48)*5))),icuO:Math.min(h.icuT,Math.max(0,h.icuO+Math.round((Math.random()-.5)*2))),emgO:Math.min(h.emgT,Math.max(0,h.emgO+Math.round((Math.random()-.5)*1)))})));
-      setNow(new Date());
-      const sysOcc=Math.round((hosps.reduce((a,h)=>a+h.occ,0)/hosps.reduce((a,h)=>a+h.beds,0))*100);
-      spark.current=[...spark.current.slice(1),sysOcc];
-      if(Math.random()<.25){
-        const desc=["Acute MI · Cardiology","Stroke · Neurology","Respiratory failure · Pulmonology","Trauma · Emergency"][Math.floor(Math.random()*4)];
-        const nm=["Rahul K., 52","Sunita P., 38","Anil M., 67","Divya S., 29","Vikram R., 44"][Math.floor(Math.random()*5)];
-        const dest=hosps[Math.floor(Math.random()*hosps.length)].name;
-        setFeed(f=>[{id:`BLR-${9000+Math.floor(Math.random()*999)}`,name:nm,desc,dest,eta:5+Math.floor(Math.random()*15),sev:Math.random()<.3?"critical":Math.random()<.5?"urgent":"stable",time:"Just now"},...f.slice(0,6)]);
+  useEffect(() => {
+    const socket = io(backendOrigin || undefined);
+    socket.on("disconnect", () => setConnected(false));
+    socket.on("hospitals_update", hospitals => {
+      setHosps(hospitals);
+      const at = new Date();
+      setNow(at);
+      const beds = hospitals.reduce((sum, hospital) => sum + hospital.beds, 0);
+      if (beds > 0) {
+        const occupied = hospitals.reduce((sum, hospital) => sum + hospital.occ, 0);
+        setOccupancyHistory(history => [...history.slice(-29), { at: at.getTime(), percent: occupied / beds * 100 }]);
       }
-    },CFG.TICK_MS);
-    return()=>clearInterval(iv);
-  },[]);
-
-  const totB=hosps.reduce((a,h)=>a+h.beds,0),totO=hosps.reduce((a,h)=>a+h.occ,0);
-  const icuT=hosps.reduce((a,h)=>a+h.icuT,0),icuO=hosps.reduce((a,h)=>a+h.icuO,0);
-  const sysP=Math.round((totO/totB)*100);
-  const nearC=hosps.filter(h=>(h.occ/h.beds)>.85).length;
+      setConnected(true);
+    });
+    socket.on("queue_update", queue => {
+      setQueueReceived(true);
+      setFeed(queue.map(patient => ({
+        ...patient,
+        desc: patient.desc || patient.dept,
+        dest: patient.destName || "Awaiting dispatch",
+        eta: Number.isFinite(patient.eta) ? patient.eta : null,
+        sev: patient.urgency >= 5 ? "critical" : patient.urgency >= 3 ? "urgent" : "stable",
+      })));
+    });
+    return () => socket.disconnect();
+  }, []);
 
   const NAVS=[
     {id:"dashboard",icon:"",label:"Dashboard",sec:"Overview"},
@@ -942,23 +607,23 @@ const Admin = ({onLogout}) => {
   useEffect(() => {
     async function fetchHealth() {
       try {
-        const r = await fetch('/api/health', { signal: AbortSignal.timeout(3000) });
+        const r = await fetch(apiUrl('/health'), { signal: AbortSignal.timeout(3000) });
         if (r.ok) setHealthData(await r.json());
-      } catch (_) { /* backend not running — keep defaults */ }
+      } catch { /* backend not running — keep defaults */ }
     }
     fetchHealth();
     const iv = setInterval(fetchHealth, 10000); // refresh every 10s
     return () => clearInterval(iv);
   }, []);
 
-  const Page = () => {
+  const renderPage = () => {
     switch(nav){
-      case "dashboard":return <Dashboard hosps={hosps} feed={feed} healthData={healthData}/>;
-      case "livemap":  return <div style={{animation:"fadeUp .4s ease"}}><h2 style={{fontWeight:800,fontSize:22,marginBottom:20}}>Live Spatial Map</h2><div className="bg-[#09090b] border border-zinc-800/50 rounded-xl p-6"><AdminMap hospitals={hosps}/><div style={{marginTop:20,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12}}>{hosps.map(h=>{const oc=Math.round((h.occ/h.beds)*100);return(<div key={h.id} style={{background:"#09090b",borderRadius:8,padding:"12px 14px"}}><div style={{fontWeight:700,fontSize:13,marginBottom:3}}>{h.name}</div><div style={{fontSize:11,color:"#a1a1aa",marginBottom:8}}>{h.area}</div><Bar v={oc}/><div style={{display:"flex",justifyContent:"space-between",marginTop:4,fontSize:11,fontWeight:700}}><span style={{color:"#a1a1aa"}}>Occupancy</span><span style={{color:oc>85?"var(--warn)":oc>65?"var(--amber)":"var(--accent2)"}}>{oc}%</span></div></div>);})}</div></div></div>;
+      case "dashboard":return <Dashboard hosps={hosps} feed={feed} occupancyHistory={occupancyHistory} queueReceived={queueReceived} connected={connected}/>;
+      case "livemap":  return <div style={{animation:"fadeUp .4s ease"}}><h2 style={{fontWeight:800,fontSize:22,marginBottom:20}}>Live Spatial Map</h2><div className="bg-[#09090b] border border-zinc-800/50 rounded-xl p-6"><LeafletMap hospitals={hosps}/><div style={{marginTop:20,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12}}>{hosps.map(h=>{const oc=Math.round((h.occ/h.beds)*100);return(<div key={h.id} style={{background:"#09090b",borderRadius:8,padding:"12px 14px"}}><div style={{fontWeight:700,fontSize:13,marginBottom:3}}>{h.name}</div><div style={{fontSize:11,color:"#a1a1aa",marginBottom:8}}>{h.area}</div><Bar v={oc}/><div style={{display:"flex",justifyContent:"space-between",marginTop:4,fontSize:11,fontWeight:700}}><span style={{color:"#a1a1aa"}}>Occupancy</span><span style={{color:oc>85?"var(--warn)":oc>65?"var(--amber)":"var(--accent2)"}}>{oc}%</span></div></div>);})}</div></div></div>;
       case "hospitals":return <HospPage hosps={hosps}/>;
       case "triage":   return <TriagePage feed={feed}/>;
       case "analytics":return <AnalyticsPage hosps={hosps} feed={feed} healthData={healthData}/>;
-      case "predict":  return <PredPage hosps={hosps}/>;
+      case "predict":  return <PredPage hosps={hosps} feed={feed}/>;
       case "syshealth":return <SysHealthPage healthData={healthData}/>;
       case "telemetry":return <TelPage hosps={hosps} now={now}/>;
       default:return null;
@@ -972,176 +637,15 @@ const Admin = ({onLogout}) => {
       onLogout={onLogout}
       pageTitle={NAVS.find(n => n.id === nav)?.label || "Dashboard"}
     >
-      <Page/>
+      <p role="status" className="mb-4 text-xs text-zinc-400">
+        {connected ? "Connected to operations server" : "Disconnected · showing last available hospital data"}
+      </p>
+      <div key={nav} className="page-content"><Suspense fallback={<p role="status">Loading dashboard…</p>}>{renderPage()}</Suspense></div>
     </AppShell>
   );
 };
 
 // ─── DASHBOARD MAIN ───────────────────────────────────────────────────────────
-const DashMain = ({hosps,feed,alert,setAlert,sysP,icuFree,nearC,spark,healthData}) => (
-  <div style={{animation:"fadeUp .4s ease"}}>
-    {alert&&(
-      <div style={{background:"rgba(245,158,11,0.1)",border:"1px solid #fde68a",borderRadius:10,padding:"11px 16px",display:"flex",alignItems:"center",gap:10,marginBottom:18}}>
-        <span style={{fontSize:16,flexShrink:0}}></span>
-        <div style={{flex:1}}>
-          <div style={{fontSize:12.5,fontWeight:700,color:"#92400e"}}>Saturation Warning — Manipal Whitefield approaching {Math.round((hosps.find(h=>h.id==="h4")?.occ/hosps.find(h=>h.id==="h4")?.beds)*100)||94}% ICU capacity</div>
-          <div style={{fontSize:11,color:"#b45309",marginTop:1}}>Incoming ambulances being rerouted to Fortis Cunningham Road · ETA updated</div>
-        </div>
-        <button onClick={()=>setAlert(false)} style={{background:"none",border:"none",color:"#b45309",fontSize:16,cursor:"pointer"}}></button>
-      </div>
-    )}
-    {/* KPIs */}
-    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}}>
-      {[
-        {bg:"#eff6ff",icon:"",label:"Active Hospitals",value:hosps.length,delta:"+2 online today",up:true},
-        {bg:"#ecfdf5",icon:"",label:"Available ICU Beds",value:icuFree,delta:`of ${hosps.reduce((a,h)=>a+h.icuT,0)} total`,up:true},
-        {bg:"#fff1f0",icon:"",label:"Avg. Time-to-Care",value:"11 min",delta:"−23% this week",up:true},
-        {bg:"#fffbeb",icon:"",label:"Active Ambulances",value:27,delta:"7 en route now",up:true},
-      ].map((k,i)=>(
-        <div key={i} className="bg-[#09090b] border border-zinc-800/50 rounded-xl p-4 flex items-center gap-4">
-          <div style={{width:44,height:44,borderRadius:10,background:k.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{k.icon}</div>
-          <div>
-            <div style={{fontSize:10.5,fontWeight:700,color:"#a1a1aa",textTransform:"uppercase",letterSpacing:.5}}>{k.label}</div>
-            <div style={{fontSize:26,fontWeight:800,lineHeight:1.2,marginTop:2}}>{k.value}</div>
-            <div style={{fontSize:11,fontWeight:600,color:k.up?"var(--accent2)":"var(--warn)",marginTop:1}}>↑ {k.delta}</div>
-          </div>
-        </div>
-      ))}
-    </div>
-
-    {/* System Health summary strip — visible in the main dashboard at a glance */}
-    {healthData && (
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:20}}>
-        {[
-          {
-            label:  "Azure AI Language",
-            icon:   "",
-            status: healthData.azure?.status || 'unknown',
-            detail: healthData.azure?.status === 'ok'
-              ? `Avg ${healthData.azure.avgLatencyMs}ms · ${healthData.azure.callCount} calls`
-              : healthData.azure?.status === 'unknown'
-                ? healthData.server?.azureKeyConfigured ? 'Awaiting first call' : 'No API key — fallback mode'
-                : healthData.azure?.lastError || 'Check credentials',
-          },
-          {
-            label:  "OSRM Routing",
-            icon:   "",
-            status: 'external',
-            detail: "Runs in simulate.py · Road routing via OpenStreetMap",
-          },
-          {
-            label:  "Server Uptime",
-            icon:   "",
-            status: 'ok',
-            detail: `${healthData.server?.patientsTotal || 0} patients processed · ${healthData.server?.errorsTotal || 0} errors`,
-          },
-        ].map((s, i) => {
-          const colors = {
-            ok:       { bg: 'rgba(16,185,129,0.1)', c: '#059669', dot: '#059669' },
-            degraded: { bg: 'rgba(245,158,11,0.1)', c: '#d97706', dot: '#d97706' },
-            down:     { bg: 'rgba(239,68,68,0.1)', c: '#ef4444', dot: '#ef4444' },
-            unknown:  { bg: '#18181b', c: '#a1a1aa', dot: '#cbd5e1' },
-            external: { bg: 'rgba(59,130,246,0.1)', c: '#3b82f6', dot: '#3b82f6' },
-          };
-          const cl = colors[s.status] || colors.unknown;
-          return (
-            <div key={i} style={{background:cl.bg,border:`1px solid ${cl.dot}30`,borderRadius:12,padding:"12px 16px",display:"flex",gap:10,alignItems:"center"}}>
-              <span style={{fontSize:18}}>{s.icon}</span>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-                  <div style={{width:7,height:7,borderRadius:"50%",background:cl.dot,flexShrink:0}}/>
-                  <span style={{fontWeight:700,fontSize:12.5,color:cl.c}}>{s.label}</span>
-                  <span style={{fontSize:10,fontWeight:700,background:cl.dot+'20',color:cl.c,padding:"1px 7px",borderRadius:20,textTransform:"uppercase",marginLeft:"auto"}}>{s.status}</span>
-                </div>
-                <div style={{fontSize:11,color:"#a1a1aa",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.detail}</div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    )}
-
-    {/* Map + Triage */}
-    <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:16,marginBottom:16}}>
-      <div className="bg-[#09090b] border border-zinc-800/50 rounded-xl p-5">
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <div><div style={{fontWeight:700,fontSize:13.5}}>Spatial Load Map</div><div style={{fontSize:11,color:"#a1a1aa",marginTop:1}}>Real-time hospital occupancy · Bengaluru Metro</div></div>
-          <span style={{background:"rgba(16, 185, 129, 0.1)",color:"#059669",fontSize:10.5,fontWeight:700,padding:"3px 9px",borderRadius:20}}>Azure Maps Live</span>
-        </div>
-        <AdminMap hospitals={hosps}/>
-      </div>
-      <div className="bg-[#09090b] border border-zinc-800/50 rounded-xl p-5">
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <div><div style={{fontWeight:700,fontSize:13.5}}>Triage Queue</div><div style={{fontSize:11,color:"#a1a1aa",marginTop:1}}>AI-classified incoming cases</div></div>
-          <span style={{background:"rgba(239, 68, 68, 0.1)",color:"#ef4444",fontSize:10.5,fontWeight:700,padding:"3px 9px",borderRadius:20}}>{feed.filter(c=>c.sev==="critical").length} Critical</span>
-        </div>
-        {feed.slice(0,5).map((c,i)=>(
-          <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start",padding:"9px 0",borderBottom:i<4?"1px solid var(--border)":"none",animation:"slideIn .3s ease"}}>
-            <div style={{width:8,height:8,borderRadius:"50%",marginTop:4,flexShrink:0,background:c.sev==="critical"?"var(--warn)":c.sev==="urgent"?"var(--amber)":"var(--accent2)"}}/>
-            <div style={{flex:1}}>
-              <div style={{fontSize:12,fontWeight:700}}>Case #{c.id} · {c.name}</div>
-              <div style={{fontSize:11,color:"#a1a1aa",marginTop:1}}>{c.desc}</div>
-              <div style={{fontSize:11,color:"#3b82f6",fontWeight:600,marginTop:3}}>→ {c.dest} · ETA {c.eta} min</div>
-            </div>
-            <div style={{fontSize:10.5,color:"#a1a1aa",whiteSpace:"nowrap"}}>{c.time}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-
-    {/* Table + Trend */}
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-      <div className="bg-[#09090b] border border-zinc-800/50 rounded-xl p-5">
-        <div style={{fontWeight:700,fontSize:13.5,marginBottom:14}}>Hospital Health Scores</div>
-        <table style={{width:"100%",borderCollapse:"collapse"}}>
-          <thead><tr>{["Facility","ICU Beds","Load","Status"].map(h=><th key={h} style={{fontSize:10.5,fontWeight:700,color:"#a1a1aa",textAlign:"left",padding:"0 10px 10px",textTransform:"uppercase",letterSpacing:.5}}>{h}</th>)}</tr></thead>
-          <tbody>
-            {hosps.map(h=>{
-              const oc=Math.round((h.occ/h.beds)*100);
-              const bc=oc>85?"var(--warn)":oc>65?"var(--amber)":"var(--accent2)";
-              return(
-                <tr key={h.id} style={{transition:"background .15s"}} onMouseOver={e=>e.currentTarget.style.background="#f8fafc"} onMouseOut={e=>e.currentTarget.style.background=""}>
-                  <td style={{padding:10,borderTop:"1px solid var(--border)"}}><div style={{fontWeight:600,fontSize:13}}>{h.name}</div><div style={{fontSize:11,color:"#a1a1aa"}}>{h.area}</div></td>
-                  <td style={{padding:10,borderTop:"1px solid var(--border)",fontWeight:700,fontSize:12.5}}>{h.icuO} / {h.icuT}</td>
-                  <td style={{padding:10,borderTop:"1px solid var(--border)"}}><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:80,height:6,background:"var(--border)",borderRadius:99,overflow:"hidden"}}><div style={{width:`${oc}%`,height:"100%",background:bc,borderRadius:99,transition:"width .6s"}}/></div><span style={{fontSize:12,fontWeight:700,color:oc>85?"var(--warn)":"var(--text)"}}>{oc}%</span></div></td>
-                  <td style={{padding:10,borderTop:"1px solid var(--border)"}}><StatusBadge status={h.status}/></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <div style={{display:"flex",flexDirection:"column",gap:16}}>
-        <div style={{background:"#09090b",border:"1px solid rgba(39, 39, 42, 0.5)",borderRadius:12,padding:20,flex:1}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div><div style={{fontWeight:700,fontSize:13.5}}>City-Wide ICU Load</div><div style={{fontSize:11,color:"#a1a1aa",marginTop:1}}>Hourly trend — today</div></div>
-            <span style={{background:"rgba(59, 130, 246, 0.1)",color:"#3b82f6",fontSize:10.5,fontWeight:700,padding:"3px 9px",borderRadius:20}}>Azure ML Prediction</span>
-          </div>
-          <Spark data={spark} color="var(--accent)"/>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#a1a1aa",marginTop:6}}>
-            {["6AM","9AM","12PM","3PM","6PM →"].map(l=><span key={l}>{l}</span>)}
-          </div>
-          <div style={{marginTop:10,fontSize:11,color:"#a1a1aa"}}>
-            <span style={{display:"inline-block",width:10,height:10,background:"var(--accent)",borderRadius:2,opacity:.35,marginRight:5,verticalAlign:"middle"}}/>
-            Predicted peak 85–92% at 6–8PM — rerouting pre-activated
-          </div>
-        </div>
-        <div className="bg-[#09090b] border border-zinc-800/50 rounded-xl p-5">
-          <div style={{fontWeight:700,fontSize:13.5,marginBottom:14}}>Resource Snapshot</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            {[{l:"O₂ Cylinders",v:847,c:"var(--accent2)"},{l:"Blood Units",v:214,c:"var(--amber)"},{l:"Surgeons On-Call",v:63,c:"var(--accent)"},{l:"Ventilators Free",v:18,c:"var(--warn)"}].map((s,i)=>(
-              <div key={i} style={{background:"#09090b",borderRadius:8,padding:12}}>
-                <div style={{fontSize:10,color:"#a1a1aa",fontWeight:700,textTransform:"uppercase",letterSpacing:.5}}>{s.l}</div>
-                <div style={{fontSize:22,fontWeight:800,marginTop:3,color:s.c}}>{s.v}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-);
-
 const HospPage = ({hosps}) => (
   <div style={{animation:"fadeUp .4s ease"}}>
     <h2 style={{fontWeight:800,fontSize:22,marginBottom:20}}>Hospital Details</h2>
@@ -1173,18 +677,19 @@ const HospPage = ({hosps}) => (
 
 const TriagePage = ({feed}) => (
   <div style={{animation:"fadeUp .4s ease"}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+    <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
       <h2 style={{fontWeight:800,fontSize:22}}>Live Triage Queue</h2>
-      <span style={{background:"rgba(239, 68, 68, 0.1)",color:"#ef4444",fontSize:11,fontWeight:700,padding:"5px 12px",borderRadius:20}}>{feed.filter(c=>c.sev==="critical").length} Critical · Auto-routing active</span>
+      <span style={{background:"rgba(239, 68, 68, 0.1)",color:"#ef4444",fontSize:11,fontWeight:700,padding:"5px 12px",borderRadius:20}}>{feed.filter(c=>c.sev==="critical").length} Critical</span>
     </div>
     <div className="bg-[#09090b] border border-zinc-800/50 rounded-xl p-5">
+      {feed.length === 0 && <p className="text-sm text-zinc-400">No active cases received.</p>}
       {feed.map((c,i)=>(
-        <div key={i} style={{display:"flex",gap:12,alignItems:"flex-start",padding:"12px 0",borderBottom:i<feed.length-1?"1px solid var(--border)":"none",animation:"slideIn .3s ease"}}>
+        <div key={c.id} style={{display:"flex",gap:12,alignItems:"flex-start",padding:"12px 0",borderBottom:i<feed.length-1?"1px solid var(--border)":"none",animation:"slideIn .3s ease"}}>
           <div style={{width:10,height:10,borderRadius:"50%",marginTop:3,flexShrink:0,background:c.sev==="critical"?"var(--warn)":c.sev==="urgent"?"var(--amber)":"var(--accent2)"}}/>
           <div style={{flex:1}}>
             <div style={{fontWeight:700,fontSize:13}}>Case #{c.id} · {c.name}</div>
             <div style={{fontSize:12,color:"#a1a1aa",marginTop:2}}>{c.desc}</div>
-            <div style={{fontSize:12,color:"#3b82f6",fontWeight:700,marginTop:4}}>→ {c.dest} · ETA {c.eta} min</div>
+            <div style={{fontSize:12,color:"#3b82f6",fontWeight:700,marginTop:4}}>→ {c.dest}{c.eta == null ? "" : ` · ETA ${c.eta} min`}</div>
           </div>
           <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
             <span style={{background:c.sev==="critical"?"#fff1f0":c.sev==="urgent"?"#fffbeb":"#ecfdf5",color:c.sev==="critical"?"var(--warn)":c.sev==="urgent"?"var(--amber)":"var(--accent2)",fontSize:10,fontWeight:700,padding:"3px 9px",borderRadius:20,textTransform:"capitalize"}}>{c.sev}</span>
@@ -1199,7 +704,76 @@ const TriagePage = ({feed}) => (
 // ─── ANALYTICS PAGE ───────────────────────────────────────────────────────────
 // Aggregates operational stats for a decision-maker view: hospitals at capacity,
 // urgency breakdown, avg response time, AI triage source split.
+const StatCard = ({label, value, sub, color='#f4f4f5', bg='#09090b', icon}) => (
+    <div style={{background:bg,border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'18px 20px'}}>
+      <div style={{fontSize:11,color:'#a1a1aa',fontWeight:700,textTransform:'uppercase',letterSpacing:.5,marginBottom:6}}>{label}</div>
+      <div style={{display:'flex',alignItems:'baseline',gap:8,marginBottom:4}}>
+        {icon&&<span style={{fontSize:20}}>{icon}</span>}
+        <span style={{fontWeight:800,fontSize:28,color}}>{value}</span>
+      </div>
+      {sub&&<div style={{fontSize:11.5,color:'#a1a1aa'}}>{sub}</div>}
+    </div>
+  );
+
+const CapacityEditor = ({ hospital, onClose, onSaved }) => {
+  const dialog = useRef(null);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    dialog.current.showModal();
+  }, []);
+
+  async function save(event) {
+    event.preventDefault();
+    if (saving) return;
+    setSaving(true);
+    setError("");
+    const occ = Number(new FormData(event.currentTarget).get("occupancy"));
+    try {
+      const response = await fetch(apiUrl(`/hospitals/${hospital.id}`), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ occ }),
+        signal: AbortSignal.timeout(5000),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to save capacity.");
+      onSaved(data.hospital);
+      dialog.current?.close();
+    } catch {
+      setError("Unable to confirm the update. Check the connection and try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <dialog ref={dialog} onClose={onClose} onCancel={event => { if (saving) event.preventDefault(); }}
+      aria-labelledby="capacity-title" className="capacity-dialog">
+      <form onSubmit={save} className="space-y-4">
+        <div>
+          <h3 id="capacity-title" className="text-lg font-semibold">Edit ward occupancy</h3>
+          <p className="text-sm text-zinc-400">{hospital.name}</p>
+        </div>
+        <label className="block text-sm">
+          Occupied beds out of {hospital.beds}
+          <input name="occupancy" type="number" min="0" max={hospital.beds} step="1" required
+            defaultValue={hospital.occupiedBeds} className="mt-2 block w-full rounded-lg border border-zinc-600 bg-zinc-950 px-3 py-2"/>
+        </label>
+        {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" disabled={saving} onClick={() => dialog.current.close()} className="rounded-lg border border-zinc-700 px-3 py-2 text-sm">Cancel</button>
+          <button disabled={saving} className="rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold text-white">{saving ? "Saving…" : "Save capacity"}</button>
+        </div>
+      </form>
+    </dialog>
+  );
+};
+
 const AnalyticsPage = ({hosps, feed, healthData}) => {
+  const [editing, setEditing] = useState(null);
+  const [saveMessage, setSaveMessage] = useState("");
   // Derive stats from live hospital + triage feed data
   const totalBeds    = hosps.reduce((a,h)=>a+h.beds, 0);
   const occupiedBeds = hosps.reduce((a,h)=>a+h.occ,  0);
@@ -1215,27 +789,22 @@ const AnalyticsPage = ({hosps, feed, healthData}) => {
   const totalCases   = feed.length || 1;
 
   // Avg ETA from feed
-  const avgEta = feed.length ? Math.round(feed.reduce((a,c)=>a+(c.eta||0),0)/feed.length) : 0;
+  const etas = feed.map(item => item.eta).filter(Number.isFinite);
+  const avgEta = etas.length ? Math.round(etas.reduce((sum, eta) => sum + eta, 0) / etas.length) : null;
 
   // Hospital-level capacity data for bar table
   const hospRows = hosps.map(h => ({
+    id: h.id,
     name: h.name,
+    beds: h.beds,
+    occupiedBeds: h.occ,
     occ:  Math.round((h.occ/h.beds)*100),
     icu:  Math.round((h.icuO/h.icuT)*100),
     emg:  Math.round((h.emgO/h.emgT)*100),
     status: h.status,
   }));
 
-  const StatCard = ({label, value, sub, color='#f4f4f5', bg='#09090b', icon}) => (
-    <div style={{background:bg,border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'18px 20px'}}>
-      <div style={{fontSize:11,color:'#a1a1aa',fontWeight:700,textTransform:'uppercase',letterSpacing:.5,marginBottom:6}}>{label}</div>
-      <div style={{display:'flex',alignItems:'baseline',gap:8,marginBottom:4}}>
-        {icon&&<span style={{fontSize:20}}>{icon}</span>}
-        <span style={{fontWeight:800,fontSize:28,color}}>{value}</span>
-      </div>
-      {sub&&<div style={{fontSize:11.5,color:'#a1a1aa'}}>{sub}</div>}
-    </div>
-  );
+
 
   return (
     <div style={{animation:'fadeUp .4s ease'}}>
@@ -1250,11 +819,15 @@ const AnalyticsPage = ({hosps, feed, healthData}) => {
         <StatCard label="System Occupancy"    value={`${sysOccPct}%`}      sub={`${occupiedBeds} of ${totalBeds} beds filled`}                         color={sysOccPct>85?'#ef4444':'#f4f4f5'} icon=""/>
         <StatCard label="Hospitals at Capacity" value={atCapacity}           sub={`${hosps.length - atCapacity} accepting patients`}                        color={atCapacity>0?'#ef4444':'#10b981'} icon=""/>
         <StatCard label="ICU Utilisation"     value={`${icuUtilPct}%`}     sub={`${occupiedIcu} of ${totalIcu} ICU beds`}                               color={icuUtilPct>80?'#ef4444':'#f4f4f5'} icon=""/>
-        <StatCard label="Avg. ETA to Hospital"  value={`${avgEta} min`}      sub={`across ${feed.length} active cases`}                                   color="var(--accent)" icon=""/>
+        <StatCard label="Avg. ETA to Hospital"  value={avgEta == null ? "—" : `${avgEta} min`}      sub={`across ${feed.length} active cases`}                                   color="var(--accent)" icon=""/>
       </div>
 
+      {saveMessage && <p role="status" className="mb-3 text-sm text-emerald-300">{saveMessage}</p>}
+      {editing && <CapacityEditor hospital={editing} onClose={() => setEditing(null)} onSaved={hospital => {
+        setSaveMessage(`Capacity saved for ${hospital.name}.`);
+      }}/>}
       {/* Row 2 — Urgency breakdown + hospital table */}
-      <div style={{display:'grid',gridTemplateColumns:'1fr 2fr',gap:16,marginBottom:20}}>
+      <div className="analytics-grid" style={{display:'grid',gridTemplateColumns:'minmax(0, 1fr) minmax(0, 2fr)',gap:16,marginBottom:20}}>
 
         {/* Urgency distribution */}
         <div style={{background:'#09090b',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:20}}>
@@ -1275,19 +848,20 @@ const AnalyticsPage = ({hosps, feed, healthData}) => {
             </div>
           ))}
           <div style={{marginTop:16,padding:'10px 12px',background:'#18181b',borderRadius:8,fontSize:11.5,color:'#a1a1aa'}}>
-            <strong style={{color:'#f4f4f5'}}>Note for decision-makers:</strong> Critical cases trigger automatic rerouting to hospitals with ICU availability. This reduces time-to-care for the highest-risk patients.
+            <strong style={{color:'#f4f4f5'}}>Note for decision-makers:</strong> Urgency counts reflect the cases currently in the operations queue.
           </div>
         </div>
 
         {/* Per-hospital capacity table */}
         <div style={{background:'#09090b',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:20}}>
           <div style={{fontWeight:700,fontSize:13.5,marginBottom:16}}>Per-Hospital Utilisation</div>
+          <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Hospital capacity table">
           <table style={{width:'100%',borderCollapse:'collapse'}}>
-            <thead><tr>{['Hospital','Ward','ICU','Emergency','Status'].map(h=><th key={h} style={{fontSize:10,fontWeight:700,color:'#a1a1aa',textAlign:'left',padding:'0 8px 10px',textTransform:'uppercase',letterSpacing:.5}}>{h}</th>)}</tr></thead>
+            <thead><tr>{['Hospital','Ward','ICU','Emergency','Status','Actions'].map(h=><th key={h} style={{fontSize:10,fontWeight:700,color:'#a1a1aa',textAlign:'left',padding:'0 8px 10px',textTransform:'uppercase',letterSpacing:.5}}>{h}</th>)}</tr></thead>
             <tbody>
-              {hospRows.map((h,i) => (
-                <tr key={i} onMouseOver={e=>e.currentTarget.style.background='#18181b'} onMouseOut={e=>e.currentTarget.style.background=''}>
-                  <td style={{padding:'9px 8px',borderTop:'1px solid var(--border)',fontSize:12.5,fontWeight:600}}>{h.name.split(' ').slice(0,2).join(' ')}</td>
+              {hospRows.map(h => (
+                <tr key={h.id} onMouseOver={e=>e.currentTarget.style.background='#18181b'} onMouseOut={e=>e.currentTarget.style.background=''}>
+                  <td style={{padding:'9px 8px',borderTop:'1px solid var(--border)',fontSize:12.5,fontWeight:600}}>{h.name}</td>
                   {[h.occ, h.icu, h.emg].map((v,j)=>(
                     <td key={j} style={{padding:'9px 8px',borderTop:'1px solid var(--border)'}}>
                       <div style={{display:'flex',alignItems:'center',gap:7}}>
@@ -1302,21 +876,8 @@ const AnalyticsPage = ({hosps, feed, healthData}) => {
 
                   <td style={{padding:'9px 8px',borderTop:'1px solid var(--border)'}}>
                     <button 
-                      onClick={async () => {
-                        const newOcc = prompt(`Enter new ward occupancy for ${h.name} (Max ${h.beds}):`, h.occ);
-                        if (newOcc && !isNaN(newOcc)) {
-                          try {
-                            const res = await fetch(`http://localhost:3001/api/hospitals/${h.id}`, {
-                              method: 'PUT',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ occ: parseInt(newOcc) })
-                            });
-                            if (res.ok) alert('Capacity updated! It will reflect in the live feed shortly.');
-                          } catch (e) {
-                            alert('Failed to update capacity. Ensure backend is running.');
-                          }
-                        }
-                      }}
+                      aria-label={`Edit capacity for ${h.name}`}
+                      onClick={() => { setSaveMessage(""); setEditing(h); }}
                       className="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-2 py-1 rounded text-xs hover:bg-blue-600/40 transition-colors"
                     >
                       Edit
@@ -1327,6 +888,7 @@ const AnalyticsPage = ({hosps, feed, healthData}) => {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
 
@@ -1358,23 +920,22 @@ const AnalyticsPage = ({hosps, feed, healthData}) => {
 };
 
 
-const PredPage = ({hosps}) => (
+const PredPage = ({hosps, feed}) => (
   <div style={{animation:"fadeUp .4s ease"}}>
     <h2 style={{fontWeight:800,fontSize:22,marginBottom:6}}>Predictive Load Forecast</h2>
     <p style={{color:"#a1a1aa",marginBottom:22,fontSize:14}}>6-variable linear model · Variables: ward occupancy, discharge rate, inbound ambulances, avg length of stay, dept bed ratio, time-of-day load · mirrored in <code style={{background:"var(--border)",padding:"1px 5px",borderRadius:4}}>backend/services/capacityService.js</code></p>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:16,marginBottom:24}}>
       {hosps.map((h,i)=>{
-        const pred=PredictiveService.predict(h);
+        const pred=PredictiveService.predict(h, feed.filter(patient => patient.destId === h.id || patient.destName === h.name).length);
         return(
           <div key={h.id} style={{background:"#09090b",border:"1px solid rgba(39, 39, 42, 0.5)",borderRadius:12,padding:20,animation:`scaleIn .4s ease ${i*.06}s both`}}>
             <div style={{fontWeight:700,fontSize:14,marginBottom:14}}>{h.name}</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
               <div style={{background:"#09090b",borderRadius:8,padding:"10px 12px"}}><div style={{fontSize:10,color:"#a1a1aa",fontWeight:700,textTransform:"uppercase"}}>Now</div><div style={{fontWeight:800,fontSize:26,color:pred.curr>85?"var(--warn)":"var(--text)"}}>{pred.curr}%</div></div>
-              <div style={{background:pred.p60>85?"#fff1f0":"var(--bg)",borderRadius:8,padding:"10px 12px"}}><div style={{fontSize:10,color:"#a1a1aa",fontWeight:700,textTransform:"uppercase"}}>In 60 min</div><div style={{fontWeight:800,fontSize:26,color:pred.p60>85?"var(--warn)":"var(--accent2)"}}>{pred.p60}%</div></div>
+              <div style={{background:pred.p60>85?"rgba(239, 68, 68, 0.1)":"var(--surface)",borderRadius:8,padding:"10px 12px"}}><div style={{fontSize:10,color:"#a1a1aa",fontWeight:700,textTransform:"uppercase"}}>In 60 min</div><div style={{fontWeight:800,fontSize:26,color:pred.p60>85?"var(--warn)":"var(--accent2)"}}>{pred.p60}%</div></div>
             </div>
             <div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:600,marginBottom:8}}>
-              <span style={{color:pred.trend==="up"?"var(--warn)":"var(--accent2)"}}>{pred.trend==="up"?" Increasing":" Decreasing"}</span>
-              <span style={{color:"#a1a1aa"}}>Conf. {Math.round(pred.conf*100)}%</span>
+              <span style={{color:pred.trend==="up"?"var(--warn)":"var(--accent2)"}}>{pred.trend==="up"?"Increasing":pred.trend==="down"?"Decreasing":"Stable"}</span>
             </div>
             <Bar v={pred.p60}/>
           </div>
@@ -1395,7 +956,6 @@ const PredPage = ({hosps}) => (
 const SysHealthPage = ({healthData}) => {
   const {
     azure  = {},
-    osrm   = {},
     server = {},
   } = healthData || {};
 
@@ -1535,23 +1095,20 @@ const SysHealthPage = ({healthData}) => {
 const TelPage = ({hosps,now}) => (
   <div style={{animation:"fadeUp .4s ease"}}>
     <h2 style={{fontWeight:800,fontSize:22,marginBottom:6}}>Live Telemetry Feed</h2>
-    <p style={{color:"#a1a1aa",marginBottom:20,fontSize:14}}>IoT Hub simulation · Updates every 3s · Azure IoT Hub integration point</p>
+    <p style={{color:"#a1a1aa",marginBottom:20,fontSize:14}}>Facility snapshots received from the operations server.</p>
     <div style={{background:"#09090b",borderRadius:12,padding:22,fontSize:12.5,lineHeight:1.9,color:"#94a3b8",maxHeight:440,overflow:"auto",marginBottom:20}}>
       {hosps.map(h=>(
         <div key={h.id} style={{marginBottom:4}}>
-          <span style={{color:"#60a5fa"}}>[{now.toLocaleTimeString()}]</span>{" "}
+          <span style={{color:"#60a5fa"}}>[{now?.toLocaleTimeString() ?? "Snapshot"}]</span>{" "}
           <span style={{color:"#34d399"}}>{h.id}</span>{" "}
           <span style={{color:h.status==="saturated"?"#f87171":"#a78bfa"}}>status={h.status}</span>{" "}
           <span style={{color:"#fcd34d"}}>occ={((h.occ/h.beds)*100).toFixed(1)}%</span>{" "}
           beds={h.occ}/{h.beds} icu={h.icuO}/{h.icuT} emg={h.emgO}/{h.emgT}
         </div>
       ))}
-      <div style={{color:"#4ade80",marginTop:10}}>{">"} Heartbeat OK — {hosps.length} nodes — {now.toISOString()}</div>
+      <div style={{color:"#4ade80",marginTop:10}}>{">"} {hosps.length} facilities · {now ? `Last received ${now.toLocaleTimeString()}` : "Bundled snapshot"}</div>
     </div>
-    <div className="bg-[#09090b] border border-zinc-800/50 rounded-xl p-5">
-      <div style={{fontWeight:700,fontSize:14,color:"#3b82f6",marginBottom:10}}>🔵 Azure IoT Hub Integration Point</div>
-      <p style={{color:"#a1a1aa",fontSize:13,lineHeight:1.7}}>In production, replace the <code style={{background:"#09090b",padding:"2px 6px",borderRadius:4,fontSize:12}}>setInterval</code> with a <strong>SignalR / WebSocket</strong> subscription to Azure IoT Hub → Stream Analytics → Cosmos DB change feed. Same React state update, zero UI changes needed.</p>
-    </div>
+
   </div>
 );
 
@@ -1561,10 +1118,10 @@ const TelPage = ({hosps,now}) => (
 export default function App() {
   const [view,setView]=useState("landing");
   const [initialSymptoms,setInitialSymptoms]=useState("");
+  useEffect(() => { window.scrollTo(0, 0); }, [view]);
 
   return(
     <>
-      <style>{CSS}</style>
 
       {view==="landing" && 
         <Landing

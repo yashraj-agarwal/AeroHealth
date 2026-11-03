@@ -1,6 +1,5 @@
 import React from "react";
-import { LayoutGrid, BarChart2, Folder, Users, Zap, Key, Settings, CreditCard, HelpCircle, Book, Bell, Send, ChevronRight, Activity, Map, Stethoscope, ShieldCheck, Cpu } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
+import { LayoutGrid, BarChart2, Zap, ChevronRight, Activity, Map, Stethoscope, ShieldCheck, Cpu } from "lucide-react";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -29,9 +28,10 @@ export function AppShell({ children, nav, setNav, onLogout, pageTitle = "Dashboa
     ]
   };
 
-  const renderNav = (items: any[]) => items.map(item => (
+  const renderNav = (items: typeof navItems.product) => items.map(item => (
     <button
       key={item.id}
+      aria-current={nav === item.id ? "page" : undefined}
       onClick={() => setNav(item.id)}
       className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
         nav === item.id 
@@ -44,13 +44,13 @@ export function AppShell({ children, nav, setNav, onLogout, pageTitle = "Dashboa
   ));
 
   return (
-    <div className="flex h-screen w-full bg-[#0a0a0a] text-zinc-100 font-sans overflow-hidden">
+    <div className="flex h-dvh w-full bg-[#0a0a0a] text-zinc-100 font-sans overflow-hidden">
       
       {/* Sidebar */}
-      <aside className="w-64 border-r border-zinc-800/50 bg-[#0a0a0a] flex flex-col justify-between overflow-y-auto hidden md:flex">
+      <aside className="w-60 shrink-0 border-r border-zinc-800/50 bg-[#0a0a0a] flex flex-col justify-between overflow-y-auto hidden md:flex">
         <div>
           {/* Logo */}
-          <div className="h-16 flex items-center px-6 border-b border-transparent shrink-0">
+          <div className="h-16 flex items-center px-4 sm:px-6 border-b border-transparent shrink-0">
             <LayoutGrid className="w-5 h-5 mr-3 text-zinc-300" />
             <span className="font-medium tracking-wide text-zinc-100">AeroHealth</span>
           </div>
@@ -100,15 +100,7 @@ export function AppShell({ children, nav, setNav, onLogout, pageTitle = "Dashboa
               )}
             </div>
           </div>
-          <div className="space-y-1">
-            <a href="#" className="flex items-center px-2 py-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-colors">
-              <HelpCircle className="w-3.5 h-3.5 mr-3" /> Help Center
-            </a>
-            <a href="#" className="flex items-center px-2 py-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-colors">
-              <Book className="w-3.5 h-3.5 mr-3" /> Documentation
-            </a>
-          </div>
-          <div className="px-2 pt-6 text-[10px] text-zinc-600">© 2026 AeroHealth LLC</div>
+
         </div>
       </aside>
 
@@ -116,7 +108,7 @@ export function AppShell({ children, nav, setNav, onLogout, pageTitle = "Dashboa
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         
         {/* Header */}
-        <header className="h-16 shrink-0 flex items-center justify-between px-6 border-b border-zinc-800/50 bg-[#0a0a0a]">
+        <header className="h-16 shrink-0 flex items-center justify-between px-4 sm:px-6 border-b border-zinc-800/50 bg-[#0a0a0a]">
           <div className="flex items-center text-sm text-zinc-400">
             <LayoutGrid className="w-4 h-4 mr-2" />
             <span className="flex items-center gap-1.5">
@@ -126,19 +118,18 @@ export function AppShell({ children, nav, setNav, onLogout, pageTitle = "Dashboa
             </span>
           </div>
 
-          <div className="flex items-center space-x-4">
-            <button className="p-2 rounded-full border border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50 transition-all">
-              <Send className="w-4 h-4" />
-            </button>
-            <button className="p-2 rounded-full border border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50 transition-all">
-              <Bell className="w-4 h-4" />
-            </button>
-          </div>
+          {onLogout && <button className="md:hidden rounded-md border border-zinc-700 px-3 py-2 text-xs" onClick={onLogout}>Log out</button>}
         </header>
+
+        <nav aria-label="Command Center pages" className="md:hidden px-4 py-3 border-b border-zinc-800">
+          <select aria-label="Command Center page" value={nav} onChange={event => setNav(event.target.value)} className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm">
+            {Object.values(navItems).flat().map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+          </select>
+        </nav>
 
         {/* Dashboard Content */}
         <main className="flex-1 overflow-auto bg-[#0a0a0a]">
-          <div className="p-6 h-full max-w-[1600px] mx-auto">
+          <div className="p-4 sm:p-6 max-w-[1600px] mx-auto">
             {children}
           </div>
         </main>

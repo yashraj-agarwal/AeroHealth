@@ -27,7 +27,7 @@
 'use strict';
 
 // Load .env if present (optional — demo works without it)
-try { require('dotenv').config(); } catch (_) { /* dotenv optional in demo */ }
+try { require('dotenv').config(); } catch { /* dotenv optional in demo */ }
 
 const { classifySymptoms, DEPARTMENTS, URGENCY_LABELS } = require('./services/triageService');
 const { forecastCapacity } = require('./services/capacityService');
@@ -194,7 +194,7 @@ async function main() {
   console.log('\n═══════════════════════════════════════════════════════════════');
   console.log('  5 URGENCY LEVELS');
   console.log('═══════════════════════════════════════════════════════════════');
-  Object.entries(URGENCY_LABELS).forEach(([level, label]) => {
+  Object.entries(URGENCY_LABELS).forEach(([level]) => {
     console.log(`  ${urgencyBar(parseInt(level))}`);
   });
 
